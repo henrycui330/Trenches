@@ -18,15 +18,29 @@ class MpClient {
         this._connectTimer = null;
     }
 
-    /** Game WS always lives on the Node server (default 8765). */
+    /** Resolve WebSocket URL for local Node server or Cloudflare / production. */
     get defaultUrl() {
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = (location.hostname && location.hostname !== '') ? location.hostname : 'localhost';
-        // file:// or wrong static port → still hit the game server
-        if (location.protocol === 'file:' || !location.port || location.port !== '8765') {
-            return `${proto}//${host}:8765`;
+        const cfg = window.TRENCHES_MP || {};
+        if (cfg.PRODUCTION_WS && !this._isLocalHost()) {
+            return cfg.PRODUCTION_WS;
         }
-        return `${proto}//${location.host}`;
+
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+        // Local Node game server
+        if (this._isLocalHost()) {
+            if (location.port === '8765') return `ws://${location.hostname}:8765`;
+            // Live Server / file open → still hit local MP server
+            return 'ws://localhost:8765';
+        }
+
+        // Cloudflare Worker (or any host that serves /ws on same origin)
+        return `${proto}//${location.host}/ws`;
+    }
+
+    _isLocalHost() {
+        const h = location.hostname || '';
+        return h === 'localhost' || h === '127.0.0.1' || location.protocol === 'file:';
     }
 
     isConnected() {
@@ -99,7 +113,7 @@ class MpClient {
 
             this._connectTimer = setTimeout(() => {
                 finish(reject, new Error(
-                    `Connection timed out (${target}). Run: npm start  then open http://localhost:8765`
+                    `Connection timed out (${target}). For local play: npm start → http://localhost:8765. Online: use the Cloudflare deploy URL (GitHub Pages cannot host WebSockets alone).`
                 ));
                 try { if (this.ws) this.ws.close(); } catch (_) { /* ignore */ }
             }, 8000);

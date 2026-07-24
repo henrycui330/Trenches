@@ -1,0 +1,16 @@
+node_modules/
+.git/
+.cursor/
+.vscode/
+.wrangler/
+results/
+*.md
+wrangler.toml
+worker/
+server/
+package-lock.json
+package.json
+.DS_Store
+.gitignore
+.assetsignore
+code/sim/*.test.js
