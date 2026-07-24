@@ -161,23 +161,38 @@ class MpClient {
         this.ws.send(JSON.stringify(obj));
     }
 
-    /** Prefer P2P datachannels; fall back to WS relay. */
+    /**
+     * Full snap over P2P when open; always keep a light WS backbone (units+cps)
+     * so guests never freeze when datachannels clog or stall.
+     */
     sendSnapshot(snap) {
-        const payload = JSON.stringify({ type: 'snapshot', snap });
-        let sentPeer = false;
+        const lightSnap = {
+            t: snap.t,
+            units: snap.units,
+            cps: snap.cps,
+            structures: snap.structures
+        };
+        if (snap.bodies) lightSnap.bodies = snap.bodies;
+
+        let viaP2p = false;
+        const full = JSON.stringify({ type: 'snapshot', snap });
         for (const [, peer] of this.peers) {
-            if (peer.dc && peer.dc.readyState === 'open') {
-                if (peer.dc.bufferedAmount < 512 * 1024) {
-                    peer.dc.send(payload);
-                    sentPeer = true;
-                }
+            if (peer.dc && peer.dc.readyState === 'open' && peer.dc.bufferedAmount < 512 * 1024) {
+                try {
+                    peer.dc.send(full);
+                    viaP2p = true;
+                } catch (_) { /* ignore */ }
             }
         }
-        if (!sentPeer) {
-            this.send({ type: 'snapshot', snap });
+
+        const now = performance.now();
+        if (!viaP2p || !this._lastWsSnapAt || now - this._lastWsSnapAt > 80) {
+            this._lastWsSnapAt = now;
+            this.send({ type: 'snapshot', snap: lightSnap });
         }
     }
 
+    /** Prefer dropping FX, never block light state. */
     canSendHeavy() {
         for (const [, peer] of this.peers) {
             if (peer.dc && peer.dc.readyState === 'open') {
@@ -189,15 +204,7 @@ class MpClient {
     }
 
     sendCmd(cmd) {
-        const hostId = this.room && this.room.hostId;
-        const payload = JSON.stringify({ type: 'cmd', from: this.playerId, cmd });
-        if (hostId && hostId !== this.playerId) {
-            const peer = this.peers.get(hostId);
-            if (peer && peer.dc && peer.dc.readyState === 'open') {
-                peer.dc.send(payload);
-                return;
-            }
-        }
+        // Orders ALWAYS go over WebSocket (reliable). P2P alone dropped guest assaults.
         this.send({ type: 'cmd', cmd });
     }
 

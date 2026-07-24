@@ -332,6 +332,7 @@ class GameEngine {
                 }
             } else {
                 this.flushMpSnapshot();
+                this._checkGuestSyncHealth();
             }
             this.renderer.render(deltaTime * 1000);
         }
@@ -690,16 +691,19 @@ class GameEngine {
 
     broadcastMpSnapshot(opts = {}) {
         if (!this.isMpHost() || !this.mpClient || !this.renderer) return;
-        if (typeof this.mpClient.canSendHeavy === 'function' && !this.mpClient.canSendHeavy()) {
-            return; // socket buffer backed up — drop this tick
-        }
-        this.mpClient.sendSnapshot(this.renderer.buildSnapshot(opts));
+        const heavyOk = typeof this.mpClient.canSendHeavy !== 'function' || this.mpClient.canSendHeavy();
+        // Never skip the whole snap — only strip FX when congested (guest capture/pause fix)
+        const snapOpts = heavyOk
+            ? opts
+            : { includeBodies: !!opts.includeBodies, lightFx: true };
+        this.mpClient.sendSnapshot(this.renderer.buildSnapshot(snapOpts));
     }
 
     applyMpSnapshot(snap) {
         if (!this.isMpGuest() || !this.renderer) return;
         // Coalesce: only keep latest until next frame
         this._pendingMpSnap = snap;
+        this._lastMpSnapAt = performance.now();
     }
 
     flushMpSnapshot() {
@@ -707,6 +711,20 @@ class GameEngine {
         const snap = this._pendingMpSnap;
         this._pendingMpSnap = null;
         this.renderer.applySnapshot(snap);
+    }
+
+    /** Guest: warn if host snapshots stall (looks like a frozen battlefield). */
+    _checkGuestSyncHealth() {
+        if (!this.isMpGuest()) return;
+        const last = this._lastMpSnapAt || 0;
+        const stalled = last > 0 && (performance.now() - last) > 2000;
+        if (stalled && !this._guestSyncWarned) {
+            this._guestSyncWarned = true;
+            this.notifyTelegraph('SYNC DELAY — waiting on host battlefield…', true);
+            console.warn('[MP] Guest snapshot stall >2s');
+        } else if (!stalled) {
+            this._guestSyncWarned = false;
+        }
     }
 
     applyMpCmd(fromId, cmd) {

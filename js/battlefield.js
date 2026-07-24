@@ -673,6 +673,11 @@ class BattlefieldRenderer {
                         true
                     );
                 }
+                // Guests only see Charlie flips via snapshots — push immediately
+                if (window.gameEngineInstance && typeof window.gameEngineInstance.isMpHost === 'function'
+                    && window.gameEngineInstance.isMpHost()) {
+                    window.gameEngineInstance.broadcastMpSnapshot({ includeBodies: true });
+                }
                 // Check win condition: all 3 CPs owned by same side
                 if (window.gameEngineInstance) {
                     const allEntente = this.capturePoints.every(c => c.owner === 'entente');
@@ -742,8 +747,7 @@ class BattlefieldRenderer {
                 heat: s.heat || 0,
                 oh: !!s.isOverheated
             })),
-            // Combat VFX so guests see gunfights (they don't run local combat)
-            fx: this.tracers.slice(0, 48).map(t => ({
+            fx: opts.lightFx ? [] : this.tracers.slice(0, 48).map(t => ({
                 sx: Math.round(t.startX),
                 sy: Math.round(t.startY),
                 tx: Math.round(t.targetX),
@@ -751,7 +755,7 @@ class BattlefieldRenderer {
                 life: Math.round((t.life || 0.1) * 100) / 100,
                 col: t.color
             })),
-            ord: this.ordnance.slice(0, 20).map(o => ({
+            ord: opts.lightFx ? [] : this.ordnance.slice(0, 20).map(o => ({
                 sx: Math.round(o.startX),
                 sy: Math.round(o.startY),
                 tx: Math.round(o.targetX),
@@ -869,8 +873,19 @@ class BattlefieldRenderer {
 
         if (snap.cps && snap.cps.length === this.capturePoints.length) {
             snap.cps.forEach((c, i) => {
-                this.capturePoints[i].owner = c.o === undefined ? c.owner : c.o;
+                const prev = this.capturePoints[i].owner;
+                const nextOwner = c.o === undefined ? c.owner : c.o;
+                this.capturePoints[i].owner = nextOwner;
                 this.capturePoints[i].progress = c.p != null ? c.p : c.progress;
+                if (nextOwner !== prev && window.UIController) {
+                    const label = this.capturePoints[i].label;
+                    const winner = nextOwner === 'entente' ? '🔵 ALLIED'
+                        : (nextOwner === 'central' ? '🔴 CENTRAL POWERS' : '⬜ NEUTRAL');
+                    window.UIController.addTelegraphDispatch(
+                        `FIELD DISPATCH: ${label} ${nextOwner ? 'CAPTURED by ' + winner : 'LOST — now NEUTRAL'}!`,
+                        true
+                    );
+                }
             });
         } else if (snap.capturePoints && snap.capturePoints.length === this.capturePoints.length) {
             snap.capturePoints.forEach((c, i) => {
@@ -1086,9 +1101,9 @@ class BattlefieldRenderer {
         this.clampCamera();
 
         if (this.mpGuestView) {
-            // Guests: show gunfights locally (tracers/aim). Host snaps still own real HP/deaths.
+            // Guests: cosmetic move + gunfight VFX only. Capture/HP/arrival owned by host snaps.
             this.combatVisualOnly = true;
-            this.updateSoldierMovement(dtSec);
+            this.updateGuestCosmeticMovement(dtSec);
             this.updateSoldierCombat(dtSec);
         } else {
             this.combatVisualOnly = false;
@@ -1631,6 +1646,35 @@ class BattlefieldRenderer {
                 window.gameEngineInstance.onEnemyKilled();
             }
         }
+    }
+
+    /**
+     * Guest-only: keep charging/retreating units walking so the screen isn't frozen,
+     * but never flip state / capture / morale — host snapshots own those.
+     */
+    updateGuestCosmeticMovement(dt) {
+        this.units.forEach(u => {
+            if (!u || u.hp <= 0 || u.isAiming) return;
+            if (u.state === 'charging') {
+                const targetX = u.chargeTargetX !== undefined
+                    ? u.chargeTargetX
+                    : this._getXForHoldLine(u.faction, u.chargeHoldLine || 'enemy');
+                const dx = targetX - u.x;
+                if (Math.abs(dx) > 8) {
+                    u.x += Math.sign(dx) * u.speed;
+                    u.y += (Math.random() - 0.5) * 0.3;
+                    u.inCover = false;
+                }
+            } else if (u.state === 'retreating') {
+                const line = u.holdLine || 'main';
+                const path = this._getPathForHoldLine(u.faction, line);
+                const homeX = this.getTrenchXAtY(path, u.y);
+                const dx = homeX - u.x;
+                if (Math.abs(dx) > 10) {
+                    u.x += Math.sign(dx) * (u.speed * 1.15);
+                }
+            }
+        });
     }
 
     updateSoldierMovement(dt) {
