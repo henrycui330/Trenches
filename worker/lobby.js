@@ -229,6 +229,23 @@ export class TrenchesLobby {
                 if (hostWs) send(hostWs, { type: 'cmd', from: playerId, cmd: msg.cmd });
                 break;
             }
+            case 'webrtc_signal': {
+                const room = this.rooms.get(meta.roomCode);
+                if (!room) return;
+                const to = msg.to;
+                if (!to || !room.players[to]) return;
+                // Only relay within the same room
+                if (!room.players[playerId]) return;
+                const pws = this.sockets.get(to);
+                if (pws) {
+                    send(pws, {
+                        type: 'webrtc_signal',
+                        from: playerId,
+                        signal: msg.signal
+                    });
+                }
+                break;
+            }
             default:
                 send(ws, { type: 'error', message: `Unknown message: ${msg.type}` });
         }

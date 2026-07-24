@@ -1,5 +1,6 @@
 /* ==========================================================================
-   Multiplayer WebSocket client (lobby)
+   Multiplayer client — WS lobby + WebRTC P2P game sync (low guest lag)
+   Snapshots/cmds prefer host↔guest DataChannel; Cloudflare WS is signaling/fallback.
    ========================================================================== */
 
 class MpClient {
@@ -15,26 +16,24 @@ class MpClient {
         this.onConnectionChange = null;
         this.onSnapshot = null;
         this.onCmd = null;
+        this.onPeerReady = null;
         this._connectTimer = null;
+
+        /** @type {Map<string, { pc: RTCPeerConnection, dc: RTCDataChannel|null, polite: boolean }>} */
+        this.peers = new Map();
+        this._makingOffer = new Set();
     }
 
-    /** Resolve WebSocket URL for local Node server or Cloudflare / production. */
     get defaultUrl() {
         const cfg = window.TRENCHES_MP || {};
         if (cfg.PRODUCTION_WS && !this._isLocalHost()) {
             return cfg.PRODUCTION_WS;
         }
-
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-        // Local Node game server
         if (this._isLocalHost()) {
             if (location.port === '8765') return `ws://${location.hostname}:8765`;
-            // Live Server / file open → still hit local MP server
             return 'ws://localhost:8765';
         }
-
-        // Cloudflare Worker (or any host that serves /ws on same origin)
         return `${proto}//${location.host}/ws`;
     }
 
@@ -53,8 +52,6 @@ class MpClient {
                 resolve(this.playerId);
                 return;
             }
-
-            // Drop stale socket attempting to connect
             if (this.ws) {
                 try { this.ws.close(); } catch (_) { /* ignore */ }
                 this.ws = null;
@@ -93,28 +90,23 @@ class MpClient {
                     return;
                 }
                 this._handle(msg);
-                if (msg.type === 'welcome') {
-                    finish(resolve, msg.playerId);
-                }
+                if (msg.type === 'welcome') finish(resolve, msg.playerId);
             };
 
-            this.ws.onerror = (ev) => {
-                console.warn('[MP] socket error', target, ev);
-            };
+            this.ws.onerror = () => console.warn('[MP] socket error', target);
 
             this.ws.onclose = (ev) => {
                 if (this.onConnectionChange) this.onConnectionChange(false);
                 this.ws = null;
+                this._teardownPeers();
                 console.log('[MP] disconnected', ev.code, ev.reason || '');
                 finish(reject, new Error(
-                    `Could not reach multiplayer server at ${target}. Run: npm start  then open http://localhost:8765`
+                    `Could not reach multiplayer server at ${target}. Run: npm start → http://localhost:8765`
                 ));
             };
 
             this._connectTimer = setTimeout(() => {
-                finish(reject, new Error(
-                    `Connection timed out (${target}). For local play: npm start → http://localhost:8765. Online: use the Cloudflare deploy URL (GitHub Pages cannot host WebSockets alone).`
-                ));
+                finish(reject, new Error(`Connection timed out (${target})`));
                 try { if (this.ws) this.ws.close(); } catch (_) { /* ignore */ }
             }, 8000);
         });
@@ -135,9 +127,12 @@ class MpClient {
             case 'match_start':
                 this.room = msg.room;
                 if (this.onMatchStart) this.onMatchStart(msg);
+                // Host kicks off P2P to every guest after match starts
+                queueMicrotask(() => this._startWebRtcMesh());
                 break;
             case 'left_room':
                 this.room = null;
+                this._teardownPeers();
                 if (this.onRoomState) this.onRoomState(null);
                 break;
             case 'error':
@@ -150,6 +145,9 @@ class MpClient {
             case 'cmd':
                 if (this.onCmd) this.onCmd(msg.from, msg.cmd);
                 break;
+            case 'webrtc_signal':
+                this._onSignal(msg);
+                break;
             default:
                 break;
         }
@@ -157,26 +155,207 @@ class MpClient {
 
     send(obj) {
         if (!this.isConnected()) {
-            if (this.onError) {
-                this.onError('Not connected — open http://localhost:8765 after npm start');
-            }
+            if (this.onError) this.onError('Not connected to lobby server');
             return;
         }
         this.ws.send(JSON.stringify(obj));
     }
 
+    /** Prefer P2P datachannels; fall back to WS relay. */
     sendSnapshot(snap) {
-        this.send({ type: 'snapshot', snap });
+        const payload = JSON.stringify({ type: 'snapshot', snap });
+        let sentPeer = false;
+        for (const [, peer] of this.peers) {
+            if (peer.dc && peer.dc.readyState === 'open') {
+                if (peer.dc.bufferedAmount < 512 * 1024) {
+                    peer.dc.send(payload);
+                    sentPeer = true;
+                }
+            }
+        }
+        if (!sentPeer) {
+            this.send({ type: 'snapshot', snap });
+        }
     }
 
-    /** False when the outbound buffer is congested (drop heavy snaps). */
     canSendHeavy() {
+        for (const [, peer] of this.peers) {
+            if (peer.dc && peer.dc.readyState === 'open') {
+                return peer.dc.bufferedAmount < 512 * 1024;
+            }
+        }
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
         return this.ws.bufferedAmount < 256 * 1024;
     }
 
     sendCmd(cmd) {
+        const hostId = this.room && this.room.hostId;
+        const payload = JSON.stringify({ type: 'cmd', from: this.playerId, cmd });
+        if (hostId && hostId !== this.playerId) {
+            const peer = this.peers.get(hostId);
+            if (peer && peer.dc && peer.dc.readyState === 'open') {
+                peer.dc.send(payload);
+                return;
+            }
+        }
         this.send({ type: 'cmd', cmd });
+    }
+
+    _iceServers() {
+        return [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            // Public TURN fallback when direct/STUN fails (symmetric NATs)
+            {
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            }
+        ];
+    }
+
+    _teardownPeers() {
+        for (const [, peer] of this.peers) {
+            try { peer.dc && peer.dc.close(); } catch (_) { /* */ }
+            try { peer.pc && peer.pc.close(); } catch (_) { /* */ }
+        }
+        this.peers.clear();
+        this._makingOffer.clear();
+    }
+
+    _startWebRtcMesh() {
+        if (!this.room || !this.room.started) return;
+        const players = this.room.players || [];
+        const hostId = this.room.hostId;
+        const me = this.playerId;
+
+        // Host initiates offers to each guest. Guests wait for offers.
+        if (me === hostId) {
+            for (const p of players) {
+                if (p.id === me) continue;
+                this._ensurePeer(p.id, true);
+            }
+        }
+    }
+
+    _ensurePeer(remoteId, asOfferer) {
+        if (this.peers.has(remoteId)) return this.peers.get(remoteId);
+
+        const pc = new RTCPeerConnection({ iceServers: this._iceServers() });
+        const entry = { pc, dc: null, polite: !asOfferer };
+        this.peers.set(remoteId, entry);
+
+        pc.onicecandidate = (ev) => {
+            if (!ev.candidate) return;
+            this.send({
+                type: 'webrtc_signal',
+                to: remoteId,
+                signal: { type: 'ice', candidate: ev.candidate.toJSON() }
+            });
+        };
+
+        pc.onconnectionstatechange = () => {
+            console.log('[MP][RTC]', remoteId, pc.connectionState);
+        };
+
+        if (asOfferer) {
+            const dc = pc.createDataChannel('game', {
+                ordered: false,
+                maxRetransmits: 0
+            });
+            this._wireDc(remoteId, dc);
+            this._makeOffer(remoteId);
+        } else {
+            pc.ondatachannel = (ev) => this._wireDc(remoteId, ev.channel);
+        }
+
+        return entry;
+    }
+
+    _wireDc(remoteId, dc) {
+        const entry = this.peers.get(remoteId);
+        if (!entry) return;
+        entry.dc = dc;
+        dc.binaryType = 'arraybuffer';
+
+        dc.onopen = () => {
+            console.log('[MP][RTC] datachannel open', remoteId);
+            if (this.onPeerReady) this.onPeerReady(remoteId);
+        };
+
+        dc.onmessage = (ev) => {
+            let msg;
+            try {
+                msg = JSON.parse(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data));
+            } catch {
+                return;
+            }
+            if (msg.type === 'snapshot' && this.onSnapshot) this.onSnapshot(msg.snap);
+            if (msg.type === 'cmd' && this.onCmd) this.onCmd(msg.from, msg.cmd);
+        };
+
+        dc.onclose = () => console.log('[MP][RTC] datachannel closed', remoteId);
+    }
+
+    async _makeOffer(remoteId) {
+        const entry = this.peers.get(remoteId);
+        if (!entry || this._makingOffer.has(remoteId)) return;
+        this._makingOffer.add(remoteId);
+        try {
+            const offer = await entry.pc.createOffer();
+            await entry.pc.setLocalDescription(offer);
+            this.send({
+                type: 'webrtc_signal',
+                to: remoteId,
+                signal: { type: 'offer', sdp: entry.pc.localDescription }
+            });
+        } catch (err) {
+            console.warn('[MP][RTC] offer failed', remoteId, err);
+        } finally {
+            this._makingOffer.delete(remoteId);
+        }
+    }
+
+    async _onSignal(msg) {
+        const from = msg.from;
+        const signal = msg.signal;
+        if (!from || !signal || from === this.playerId) return;
+
+        let entry = this.peers.get(from);
+        if (!entry) {
+            if (signal.type !== 'offer') return;
+            entry = this._ensurePeer(from, false);
+        }
+
+        try {
+            if (signal.type === 'offer') {
+                await entry.pc.setRemoteDescription(signal.sdp);
+                const answer = await entry.pc.createAnswer();
+                await entry.pc.setLocalDescription(answer);
+                this.send({
+                    type: 'webrtc_signal',
+                    to: from,
+                    signal: { type: 'answer', sdp: entry.pc.localDescription }
+                });
+            } else if (signal.type === 'answer') {
+                if (entry.pc.signalingState === 'have-local-offer') {
+                    await entry.pc.setRemoteDescription(signal.sdp);
+                }
+            } else if (signal.type === 'ice' && signal.candidate) {
+                try {
+                    await entry.pc.addIceCandidate(signal.candidate);
+                } catch (err) {
+                    console.warn('[MP][RTC] ice failed', err);
+                }
+            }
+        } catch (err) {
+            console.warn('[MP][RTC] signal error', signal.type, err);
+        }
     }
 
     createRoom(name) {
@@ -204,11 +383,20 @@ class MpClient {
     }
 
     leaveRoom() {
+        this._teardownPeers();
         this.send({ type: 'leave_room' });
     }
 
     isHost() {
         return this.room && this.playerId && this.room.hostId === this.playerId;
+    }
+
+    p2pReadyCount() {
+        let n = 0;
+        for (const [, p] of this.peers) {
+            if (p.dc && p.dc.readyState === 'open') n++;
+        }
+        return n;
     }
 }
 

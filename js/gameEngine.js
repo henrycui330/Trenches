@@ -320,8 +320,10 @@ class GameEngine {
                 if (this.isMpHost()) {
                     this._snapTimer += deltaTime;
                     this._bodySnapTimer = (this._bodySnapTimer || 0) + deltaTime;
-                    // 20 Hz snapshots; skip if socket congested
-                    if (this._snapTimer >= 0.05) {
+                    // ~30 Hz over P2P when ready, else 20 Hz via WS fallback
+                    const p2p = this.mpClient && this.mpClient.p2pReadyCount && this.mpClient.p2pReadyCount() > 0;
+                    const interval = p2p ? 0.033 : 0.05;
+                    if (this._snapTimer >= interval) {
                         this._snapTimer = 0;
                         const includeBodies = this._bodySnapTimer >= 0.5;
                         if (includeBodies) this._bodySnapTimer = 0;
@@ -661,6 +663,8 @@ class GameEngine {
             }
             this.awardXP(100);
             this.mpClient.sendCmd({ orderType });
+            // Optimistic: guest sees their own order immediately (host reconciles via snaps)
+            this._applyGuestOptimisticOrder(orderType);
             this.notifyStateChange();
             return { success: true };
         }
@@ -670,9 +674,18 @@ class GameEngine {
         }
         this.state.commandPoints -= cost;
         this.mpClient.sendCmd({ orderType, cost });
-        this.notifyTelegraph(`ORDER RELAYED TO HOST: ${orderType}`, true);
+        this._applyGuestOptimisticOrder(orderType);
+        this.notifyTelegraph(`ORDER RELAYED: ${orderType}`, true);
         this.notifyStateChange();
         return { success: true };
+    }
+
+    _applyGuestOptimisticOrder(orderType) {
+        if (!this.renderer || !this.isMpGuest()) return;
+        const faction = this.state.playerFaction;
+        if (orderType === 'charge') this.renderer.orderCharge(faction);
+        else if (orderType === 'reinforce') this.renderer.orderReinforce(faction);
+        else if (orderType === 'fallback') this.renderer.orderWithdrawal(faction);
     }
 
     broadcastMpSnapshot(opts = {}) {

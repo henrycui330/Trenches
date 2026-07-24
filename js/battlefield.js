@@ -783,12 +783,13 @@ class BattlefieldRenderer {
                 // Soft follow host position (reduces teleport stutter)
                 const dx = x - existing.x;
                 const dy = y - existing.y;
-                if (Math.hypot(dx, dy) > 80) {
+                if (Math.hypot(dx, dy) > 48) {
                     existing.x = x;
                     existing.y = y;
                 } else {
-                    existing.x += dx * 0.55;
-                    existing.y += dy * 0.55;
+                    // Snap hard toward host — guests were lagging behind with soft follow
+                    existing.x += dx * 0.9;
+                    existing.y += dy * 0.9;
                 }
                 existing.faction = faction;
                 existing.ownerId = ownerId;

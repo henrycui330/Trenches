@@ -884,6 +884,12 @@ class UIController {
 
             this.mp.onSnapshot = (snap) => this.engine.applyMpSnapshot(snap);
             this.mp.onCmd = (fromId, cmd) => this.engine.applyMpCmd(fromId, cmd);
+            this.mp.onPeerReady = (remoteId) => {
+                if (this.engine && typeof this.engine.notifyTelegraph === 'function') {
+                    this.engine.notifyTelegraph(`P2P LINK UP with ${remoteId.slice(0, 8)}… — low-lag sync active.`, true);
+                }
+                if (isHost) this.engine.broadcastMpSnapshot({ includeBodies: true });
+            };
 
             // Host runs the shared sim; guest waits for snapshots
             this.engine.resetBattle(me.faction, me.country);
