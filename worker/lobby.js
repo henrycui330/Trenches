@@ -229,6 +229,17 @@ export class TrenchesLobby {
                 if (hostWs) send(hostWs, { type: 'cmd', from: playerId, cmd: msg.cmd });
                 break;
             }
+            case 'fx_burst': {
+                const room = this.rooms.get(meta.roomCode);
+                if (!room || !room.started) return;
+                if (room.hostId !== playerId) return;
+                for (const p of Object.values(room.players)) {
+                    if (p.id === playerId) continue;
+                    const pws = this.sockets.get(p.id);
+                    if (pws) send(pws, { type: 'fx_burst', shots: msg.shots });
+                }
+                break;
+            }
             case 'webrtc_signal': {
                 const room = this.rooms.get(meta.roomCode);
                 if (!room) return;

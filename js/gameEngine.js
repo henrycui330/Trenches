@@ -320,6 +320,7 @@ class GameEngine {
                 if (this.isMpHost()) {
                     this._snapTimer += deltaTime;
                     this._bodySnapTimer = (this._bodySnapTimer || 0) + deltaTime;
+                    this.flushMpFxBurst();
                     // ~30 Hz over P2P when ready, else 20 Hz via WS fallback
                     const p2p = this.mpClient && this.mpClient.p2pReadyCount && this.mpClient.p2pReadyCount() > 0;
                     const interval = p2p ? 0.033 : 0.05;
@@ -697,6 +698,22 @@ class GameEngine {
             ? opts
             : { includeBodies: !!opts.includeBodies, lightFx: true };
         this.mpClient.sendSnapshot(this.renderer.buildSnapshot(snapOpts));
+    }
+
+    /** Host: flush queued muzzle flashes as tiny packets (~40ms). */
+    flushMpFxBurst() {
+        if (!this.isMpHost() || !this.mpClient || !this.renderer) return;
+        const now = performance.now();
+        if (this._lastFxFlushAt && now - this._lastFxFlushAt < 40) return;
+        const shots = this.renderer.drainMpFxQueue && this.renderer.drainMpFxQueue();
+        if (!shots || !shots.length) return;
+        this._lastFxFlushAt = now;
+        this.mpClient.sendFxBurst(shots);
+    }
+
+    applyMpFxBurst(shots) {
+        if (!this.isMpGuest() || !this.renderer) return;
+        this.renderer.applyFxBurst(shots);
     }
 
     applyMpSnapshot(snap) {

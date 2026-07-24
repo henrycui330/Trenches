@@ -220,6 +220,17 @@ function handleMessage(ws, data) {
             }
             break;
         }
+        case 'fx_burst': {
+            const room = rooms.get(ws.roomCode);
+            if (!room || !room.started) return;
+            if (room.hostId !== playerId) return;
+            for (const p of Object.values(room.players)) {
+                if (p.id === playerId) continue;
+                const pws = sockets.get(p.id);
+                if (pws) send(pws, { type: 'fx_burst', shots: msg.shots });
+            }
+            break;
+        }
         case 'webrtc_signal': {
             const room = rooms.get(ws.roomCode);
             if (!room) return;

@@ -142,6 +142,9 @@ class MpClient {
             case 'snapshot':
                 if (this.onSnapshot) this.onSnapshot(msg.snap);
                 break;
+            case 'fx_burst':
+                if (this.onFxBurst) this.onFxBurst(msg.shots);
+                break;
             case 'cmd':
                 if (this.onCmd) this.onCmd(msg.from, msg.cmd);
                 break;
@@ -206,6 +209,21 @@ class MpClient {
     sendCmd(cmd) {
         // Orders ALWAYS go over WebSocket (reliable). P2P alone dropped guest assaults.
         this.send({ type: 'cmd', cmd });
+    }
+
+    /**
+     * Tiny gunfight packets — prefer P2P; always WS so every guest hears the fight.
+     * Guests append tracers (duplicates just look busier).
+     */
+    sendFxBurst(shots) {
+        if (!shots || !shots.length) return;
+        const payload = JSON.stringify({ type: 'fx_burst', shots });
+        for (const [, peer] of this.peers) {
+            if (peer.dc && peer.dc.readyState === 'open' && peer.dc.bufferedAmount < 256 * 1024) {
+                try { peer.dc.send(payload); } catch (_) { /* ignore */ }
+            }
+        }
+        this.send({ type: 'fx_burst', shots });
     }
 
     _iceServers() {
@@ -303,6 +321,7 @@ class MpClient {
                 return;
             }
             if (msg.type === 'snapshot' && this.onSnapshot) this.onSnapshot(msg.snap);
+            if (msg.type === 'fx_burst' && this.onFxBurst) this.onFxBurst(msg.shots);
             if (msg.type === 'cmd' && this.onCmd) this.onCmd(msg.from, msg.cmd);
         };
 

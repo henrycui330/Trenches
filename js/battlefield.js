@@ -104,6 +104,8 @@ class BattlefieldRenderer {
         this.ordnance = [];    
         this.tracers = [];     
         this.planes = [];
+        /** Host→guest tiny shot packets (drained each flush). */
+        this._mpFxQueue = [];
 
         // Build Placement Mode state
         this.buildMode = {
@@ -928,33 +930,35 @@ class BattlefieldRenderer {
             }));
         }
 
-        // Gunfight VFX from host
-        if (Array.isArray(snap.fx)) {
-            const prevCount = this.tracers.length;
-            this.tracers = snap.fx.map(t => ({
-                startX: t.sx,
-                startY: t.sy,
-                targetX: t.tx,
-                targetY: t.ty,
-                life: t.life != null ? t.life : 0.12,
-                color: t.col || 'rgba(255, 230, 150, 0.9)'
-            }));
-            if (this.tracers.length > prevCount || (this.tracers.length > 0 && snap.t !== this._lastFxT)) {
-                heardShot = this.tracers.length > 0;
+        // Gunfight VFX from host unit snaps — APPEND only; never wipe with []
+        if (Array.isArray(snap.fx) && snap.fx.length > 0) {
+            for (const t of snap.fx) {
+                this.tracers.push({
+                    startX: t.sx,
+                    startY: t.sy,
+                    targetX: t.tx,
+                    targetY: t.ty,
+                    life: t.life != null ? t.life : 0.12,
+                    color: t.col || 'rgba(255, 230, 150, 0.9)'
+                });
             }
+            heardShot = true;
             this._lastFxT = snap.t;
         }
 
-        if (Array.isArray(snap.ord)) {
-            this.ordnance = snap.ord.map(o => ({
-                startX: o.sx,
-                startY: o.sy,
-                targetX: o.tx,
-                targetY: o.ty,
-                progress: o.p || 0,
-                speed: o.sp || 1.5,
-                type: o.tyo || o.type || 'he'
-            }));
+        if (Array.isArray(snap.ord) && snap.ord.length > 0) {
+            // Merge in-flight shells; don't clear guest-local grenades with empty host lists
+            for (const o of snap.ord) {
+                this.ordnance.push({
+                    startX: o.sx,
+                    startY: o.sy,
+                    targetX: o.tx,
+                    targetY: o.ty,
+                    progress: o.p || 0,
+                    speed: o.sp || 1.5,
+                    type: o.tyo || o.type || 'he'
+                });
+            }
         }
 
         if (heardShot && window.AudioEngine && typeof window.AudioEngine.playGunshot === 'function') {
@@ -1550,14 +1554,14 @@ class BattlefieldRenderer {
                     victim = enemiesInSector[Math.floor(Math.random() * enemiesInSector.length)];
                 }
 
-                this.tracers.push({
+                this._pushTracer({
                     startX: u.x,
                     startY: u.y + 2,
                     targetX: isHit && victim ? victim.x : targetX,
                     targetY: isHit && victim ? victim.y : targetY,
                     life: 0.1,
                     color: u.faction === 'entente' ? 'rgba(255, 220, 100, 0.95)' : 'rgba(255, 170, 90, 0.95)'
-                });
+                }, { hit: isHit && !!victim });
 
                 if (window.AudioEngine && typeof window.AudioEngine.playGunshot === 'function') window.AudioEngine.playGunshot();
 
@@ -1595,7 +1599,7 @@ class BattlefieldRenderer {
 
         const isHit = Math.random() < hitChance || isOneShotKill;
 
-        this.tracers.push({
+        this._pushTracer({
             startX: u.x,
             startY: u.y + 2,
             targetX: enemy.x + (isHit ? 0 : (Math.random() * 30 - 15)),
@@ -1604,7 +1608,7 @@ class BattlefieldRenderer {
             color: u.type === 'skirmisher'
                 ? 'rgba(255, 200, 80, 0.95)'
                 : (u.faction === 'entente' ? 'rgba(255, 230, 150, 0.9)' : 'rgba(255, 180, 120, 0.9)')
-        });
+        }, { hit: isHit });
 
         if (window.AudioEngine && typeof window.AudioEngine.playGunshot === 'function') window.AudioEngine.playGunshot();
 
@@ -1645,6 +1649,54 @@ class BattlefieldRenderer {
             } else {
                 window.gameEngineInstance.onEnemyKilled();
             }
+        }
+    }
+
+    /**
+     * Push a tracer locally and (on host) queue a tiny MP shot packet for guests.
+     */
+    _pushTracer(t, opts = {}) {
+        this.tracers.push(t);
+        if (this.mpGuestView) return;
+        const eng = window.gameEngineInstance;
+        if (!eng || typeof eng.isMpHost !== 'function' || !eng.isMpHost()) return;
+        if (!this._mpFxQueue) this._mpFxQueue = [];
+        this._mpFxQueue.push({
+            sx: Math.round(t.startX),
+            sy: Math.round(t.startY),
+            tx: Math.round(t.targetX),
+            ty: Math.round(t.targetY),
+            c: t.color,
+            life: Math.round((t.life || 0.12) * 100) / 100,
+            hit: opts.hit ? 1 : 0
+        });
+        if (this._mpFxQueue.length > 80) {
+            this._mpFxQueue.splice(0, this._mpFxQueue.length - 80);
+        }
+    }
+
+    drainMpFxQueue() {
+        if (!this._mpFxQueue || this._mpFxQueue.length === 0) return null;
+        return this._mpFxQueue.splice(0, 48);
+    }
+
+    /** Guest: append tiny host shot packets (never replace local tracers). */
+    applyFxBurst(shots) {
+        if (!Array.isArray(shots) || shots.length === 0) return;
+        for (const t of shots) {
+            this.tracers.push({
+                startX: t.sx,
+                startY: t.sy,
+                targetX: t.tx,
+                targetY: t.ty,
+                life: t.life != null ? t.life : 0.12,
+                color: t.c || 'rgba(255, 230, 150, 0.9)'
+            });
+            if (t.hit) this.spawnBloodPuff(t.tx, t.ty);
+        }
+        if (window.AudioEngine && typeof window.AudioEngine.playGunshot === 'function') {
+            window.AudioEngine.playGunshot();
+            if (shots.length > 4) window.AudioEngine.playGunshot();
         }
     }
 

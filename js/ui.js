@@ -883,6 +883,7 @@ class UIController {
             }
 
             this.mp.onSnapshot = (snap) => this.engine.applyMpSnapshot(snap);
+            this.mp.onFxBurst = (shots) => this.engine.applyMpFxBurst(shots);
             this.mp.onCmd = (fromId, cmd) => this.engine.applyMpCmd(fromId, cmd);
             this.mp.onPeerReady = (remoteId) => {
                 if (this.engine && typeof this.engine.notifyTelegraph === 'function') {
