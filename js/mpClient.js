@@ -189,7 +189,9 @@ class MpClient {
         }
 
         const now = performance.now();
-        if (!viaP2p || !this._lastWsSnapAt || now - this._lastWsSnapAt > 80) {
+        // When P2P is up, slow the WS backbone — dual full-rate snaps melt guest devices
+        const wsInterval = viaP2p ? 220 : 80;
+        if (!viaP2p || !this._lastWsSnapAt || now - this._lastWsSnapAt > wsInterval) {
             this._lastWsSnapAt = now;
             this.send({ type: 'snapshot', snap: lightSnap });
         }
@@ -212,18 +214,21 @@ class MpClient {
     }
 
     /**
-     * Tiny gunfight packets — prefer P2P; always WS so every guest hears the fight.
-     * Guests append tracers (duplicates just look busier).
+     * Tiny gunfight packets. Prefer P2P; WS only as fallback (avoid double-apply lag).
      */
     sendFxBurst(shots) {
         if (!shots || !shots.length) return;
         const payload = JSON.stringify({ type: 'fx_burst', shots });
+        let viaP2p = false;
         for (const [, peer] of this.peers) {
             if (peer.dc && peer.dc.readyState === 'open' && peer.dc.bufferedAmount < 256 * 1024) {
-                try { peer.dc.send(payload); } catch (_) { /* ignore */ }
+                try {
+                    peer.dc.send(payload);
+                    viaP2p = true;
+                } catch (_) { /* ignore */ }
             }
         }
-        this.send({ type: 'fx_burst', shots });
+        if (!viaP2p) this.send({ type: 'fx_burst', shots });
     }
 
     _iceServers() {

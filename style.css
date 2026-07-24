@@ -90,7 +90,7 @@ html, body {
     display: none !important;
 }
 
-/* Modals keep flex centering; visibility is toggled via .active (not display) */
+/* Modals: .hidden alone hides; .active shows (and clears pointer block) */
 .modal.hidden {
     display: flex !important;
     opacity: 0;
@@ -99,6 +99,12 @@ html, body {
 }
 
 .modal.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.modal.hidden.active {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;

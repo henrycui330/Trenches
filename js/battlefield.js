@@ -207,8 +207,13 @@ class BattlefieldRenderer {
 
     resize() {
         if (!this.canvas) return;
-        this.canvas.width = this.canvas.parentElement.clientWidth || window.innerWidth;
-        this.canvas.height = this.canvas.parentElement.clientHeight || (window.innerHeight - 150);
+        const parent = this.canvas.parentElement;
+        const w = (parent && parent.clientWidth) || window.innerWidth;
+        const h = (parent && parent.clientHeight) || (window.innerHeight - 150);
+        // Avoid 0×0 buffer (hidden battle screen) — keeps camera clamp sane
+        this.canvas.width = Math.max(320, w);
+        this.canvas.height = Math.max(240, h);
+        this.clampCamera();
     }
 
     generateTerrainFeatures() {
@@ -218,8 +223,10 @@ class BattlefieldRenderer {
         const nmlLeft = this.ententeTrenchX + 80;
         const nmlRight = this.centralTrenchX - 80;
         const nmlWidth = Math.max(200, nmlRight - nmlLeft);
+        const guestLite = !!this.mpGuestView;
+        const craterCount = guestLite ? 16 : 80;
 
-        for (let i = 0; i < 80; i++) {
+        for (let i = 0; i < craterCount; i++) {
             this.craters.push({
                 x: nmlLeft + Math.random() * nmlWidth,
                 y: 100 + Math.random() * (this.worldHeight - 200),
@@ -228,10 +235,11 @@ class BattlefieldRenderer {
             });
         }
 
-        for (let y = 80; y < this.worldHeight - 80; y += 60) {
+        const yStep = guestLite ? 120 : 60;
+        for (let y = 80; y < this.worldHeight - 80; y += yStep) {
             this.barbedWire.push({ x: this.ententeTrenchX + 60, y: y + Math.random() * 10 });
             this.barbedWire.push({ x: this.centralTrenchX  - 60, y: y + Math.random() * 10 });
-            if (Math.random() < 0.4) {
+            if (!guestLite && Math.random() < 0.4) {
                 this.capturePoints.forEach(cp => {
                     this.barbedWire.push({ x: cp.x + (Math.random() < 0.5 ? -40 : 40), y: y + Math.random() * 10 });
                 });
@@ -809,17 +817,20 @@ class BattlefieldRenderer {
             const grenades = u.g != null ? u.g : (u.grenades || 0);
 
             if (existing) {
-                if (hp < existing.hp - 2) {
+                if (hp < existing.hp - 2 && !this.mpGuestView) {
                     this.spawnBloodPuff(existing.x, existing.y);
                 }
                 const dx = x - existing.x;
                 const dy = y - existing.y;
-                if (Math.hypot(dx, dy) > 48) {
+                // Guest: snap harder (less per-unit math) — smoother camera under load
+                const blend = this.mpGuestView ? 1 : 0.9;
+                const snapDist = this.mpGuestView ? 24 : 48;
+                if (Math.hypot(dx, dy) > snapDist) {
                     existing.x = x;
                     existing.y = y;
                 } else {
-                    existing.x += dx * 0.9;
-                    existing.y += dy * 0.9;
+                    existing.x += dx * blend;
+                    existing.y += dy * blend;
                 }
                 existing.faction = faction;
                 existing.ownerId = ownerId;
@@ -972,6 +983,9 @@ class BattlefieldRenderer {
     }
 
     initWeather() {
+        this.weather.fogParticles = [];
+        this.weather.rainParticles = [];
+        if (this.mpGuestView) return; // guests skip weather entirely
         for (let i = 0; i < 60; i++) {
             this.weather.fogParticles.push({
                 x: Math.random() * this.worldWidth,
@@ -1004,8 +1018,11 @@ class BattlefieldRenderer {
 
         window.addEventListener('mousemove', (e) => {
             if (this.camera.isDragging) {
-                const dx = (e.clientX - this.camera.dragStartX) / this.camera.zoom;
-                const dy = (e.clientY - this.camera.dragStartY) / this.camera.zoom;
+                const rect = this.canvas.getBoundingClientRect();
+                const sx = rect.width > 0 ? this.canvas.width / rect.width : 1;
+                const sy = rect.height > 0 ? this.canvas.height / rect.height : 1;
+                const dx = ((e.clientX - this.camera.dragStartX) * sx) / this.camera.zoom;
+                const dy = ((e.clientY - this.camera.dragStartY) * sy) / this.camera.zoom;
                 this.camera.x -= dx;
                 this.camera.y -= dy;
                 this.camera.dragStartX = e.clientX;
@@ -1015,8 +1032,10 @@ class BattlefieldRenderer {
 
             if (this.buildMode.active) {
                 const rect = this.canvas.getBoundingClientRect();
-                this.buildMode.mouseX = (e.clientX - rect.left) / this.camera.zoom + this.camera.x;
-                this.buildMode.mouseY = (e.clientY - rect.top) / this.camera.zoom + this.camera.y;
+                const sx = rect.width > 0 ? this.canvas.width / rect.width : 1;
+                const sy = rect.height > 0 ? this.canvas.height / rect.height : 1;
+                this.buildMode.mouseX = ((e.clientX - rect.left) * sx) / this.camera.zoom + this.camera.x;
+                this.buildMode.mouseY = ((e.clientY - rect.top) * sy) / this.camera.zoom + this.camera.y;
             }
         });
 
@@ -1945,7 +1964,8 @@ class BattlefieldRenderer {
         ctx.fillStyle = '#1a1510';
         ctx.fillRect(this.ententeTrenchX + 20, 0, this.centralTrenchX - this.ententeTrenchX - 40, this.worldHeight);
 
-        // Shell-scarred texture patches across No Man's Land
+        // Shell-scarred texture — skip on guests (36 ellipses/frame is costly)
+        if (this.mpGuestView) return;
         ctx.fillStyle = 'rgba(12, 9, 6, 0.4)';
         for (let i = 0; i < 36; i++) {
             ctx.beginPath();
@@ -1958,7 +1978,40 @@ class BattlefieldRenderer {
         }
     }
 
+    /** Guest: thick lines only — no sandbag fillRect spam. */
+    _drawTrenchesLite(ctx) {
+        const strokePath = (pts, color, width) => {
+            if (!pts || pts.length < 2) return;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineJoin = 'miter';
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            ctx.stroke();
+        };
+        const straight = (x, color) => {
+            ctx.fillStyle = color;
+            ctx.fillRect(x - 10, 0, 20, this.worldHeight);
+        };
+        straight(this.ententeSupportTrenchX, '#0f0c09');
+        straight(this.centralSupportTrenchX, '#0f0c09');
+        strokePath(this.ententeFrontPath, '#0d0a07', 18);
+        strokePath(this.ententeFrontPath, '#3a2d1f', 12);
+        strokePath(this.centralFrontPath, '#0d0a07', 18);
+        strokePath(this.centralFrontPath, '#3a2d1f', 12);
+        this.capturePoints.forEach(cp => {
+            if (!cp.path) return;
+            const col = cp.owner === 'entente' ? '#1e3a8a' : cp.owner === 'central' ? '#7f1d1d' : '#2a2a2a';
+            strokePath(cp.path, col, 14);
+        });
+    }
+
     drawTrenches(ctx) {
+        if (this.mpGuestView) {
+            this._drawTrenchesLite(ctx);
+            return;
+        }
         // --- Straight reserve/support trench ---
         const drawStraightTrench = (x, label, isPlayer) => {
             ctx.fillStyle = '#0f0c09';

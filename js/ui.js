@@ -351,6 +351,11 @@ class UIController {
 
             if (this.engine && this.engine.renderer) {
                 this.engine.renderer.resize();
+                // Layout may settle after display:none → visible; resize again next frames
+                requestAnimationFrame(() => {
+                    this.engine.renderer.resize();
+                    requestAnimationFrame(() => this.engine.renderer.resize());
+                });
             }
         } else {
             if (this.battleScreen) {
@@ -367,6 +372,7 @@ class UIController {
     openModal(modalKey) {
         this.initElements();
         if (this.modals[modalKey]) {
+            this.modals[modalKey].classList.remove('hidden');
             this.modals[modalKey].classList.add('active');
         }
         if (modalKey === 'upgrades') {
@@ -422,7 +428,9 @@ class UIController {
 
     closeAllModals() {
         Object.values(this.modals).forEach(m => {
-            if (m) m.classList.remove('active');
+            if (!m) return;
+            m.classList.remove('active');
+            m.classList.add('hidden');
         });
     }
 
@@ -908,10 +916,17 @@ class UIController {
                 this.engine.renderer.units = [];
                 this.engine.renderer.structures = [];
                 this.engine.renderer.deadBodies = [];
+                this.engine.renderer._enforceGuestFxCaps();
             }
             if (isHost) {
                 this.engine.broadcastMpSnapshot();
             }
+            this.engine.notifyStateChange();
+            // Ensure canvas size + HUD after battle screen is visible
+            requestAnimationFrame(() => {
+                if (this.engine && this.engine.renderer) this.engine.renderer.resize();
+                this.engine.notifyStateChange();
+            });
         }
 
         const modeLabel = room.mode === 'coop' ? 'CO-OP' : 'VERSUS';

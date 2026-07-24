@@ -333,6 +333,7 @@ class GameEngine {
                 }
             } else {
                 this.flushMpSnapshot();
+                this.updateGuestLocal(deltaTime);
                 this._checkGuestSyncHealth();
             }
             this.renderer.render(deltaTime * 1000);
@@ -725,9 +726,32 @@ class GameEngine {
 
     flushMpSnapshot() {
         if (!this._pendingMpSnap || !this.renderer) return;
+        // Don't teleport the world mid-pan — apply after drag ends
+        if (this.renderer.camera && this.renderer.camera.isDragging) return;
         const snap = this._pendingMpSnap;
         this._pendingMpSnap = null;
         this.renderer.applySnapshot(snap);
+    }
+
+    /**
+     * Guest: keep CP / clock / HUD alive without running the full sim or HQ spawns.
+     */
+    updateGuestLocal(dt) {
+        if (this.state.commandPoints < this.state.maxCommandPoints) {
+            this.state.commandPoints = Math.min(
+                this.state.maxCommandPoints,
+                this.state.commandPoints + (this.state.cpRegenRate * dt)
+            );
+        }
+        this.state.gameTimeMinutes += dt * 2;
+        if (this.state.officerCooldown > 0) {
+            this.state.officerCooldown = Math.max(0, this.state.officerCooldown - dt);
+        }
+        this._guestHudAcc = (this._guestHudAcc || 0) + dt;
+        if (this._guestHudAcc >= 0.25) {
+            this._guestHudAcc = 0;
+            this.notifyStateChange();
+        }
     }
 
     /** Guest: warn if host snapshots stall (looks like a frozen battlefield). */
