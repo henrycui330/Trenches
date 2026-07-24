@@ -722,7 +722,9 @@ class BattlefieldRenderer {
                 ch: u.chargeHoldLine || undefined,
                 cx: u.chargeTargetX != null ? Math.round(u.chargeTargetX) : undefined,
                 hp: Math.round(u.hp),
-                mh: Math.round(u.maxHp)
+                mh: Math.round(u.maxHp),
+                a: u.isAiming ? 1 : 0,
+                g: u.grenades || 0
             })),
             cps: this.capturePoints.map(c => ({
                 o: c.owner,
@@ -739,6 +741,24 @@ class BattlefieldRenderer {
                 occupiedBy: s.occupiedBy || null,
                 heat: s.heat || 0,
                 oh: !!s.isOverheated
+            })),
+            // Combat VFX so guests see gunfights (they don't run local combat)
+            fx: this.tracers.slice(0, 48).map(t => ({
+                sx: Math.round(t.startX),
+                sy: Math.round(t.startY),
+                tx: Math.round(t.targetX),
+                ty: Math.round(t.targetY),
+                life: Math.round((t.life || 0.1) * 100) / 100,
+                col: t.color
+            })),
+            ord: this.ordnance.slice(0, 20).map(o => ({
+                sx: Math.round(o.startX),
+                sy: Math.round(o.startY),
+                tx: Math.round(o.targetX),
+                ty: Math.round(o.targetY),
+                p: Math.round((o.progress || 0) * 100) / 100,
+                sp: o.speed,
+                tyo: o.type
             }))
         };
         if (includeBodies) {
@@ -763,6 +783,7 @@ class BattlefieldRenderer {
         const factionOf = (f) => (f === 0 || f === 'entente') ? 'entente' : 'central';
         const byId = new Map(this.units.map(u => [u.id, u]));
         const next = [];
+        let heardShot = false;
 
         for (const u of snap.units) {
             const faction = factionOf(u.f != null ? u.f : u.faction);
@@ -778,16 +799,19 @@ class BattlefieldRenderer {
             const maxHp = u.mh != null ? u.mh : (u.maxHp || 100);
             const ownerId = u.o || u.ownerId;
             const country = u.c || u.country;
+            const isAiming = !!(u.a != null ? u.a : u.isAiming);
+            const grenades = u.g != null ? u.g : (u.grenades || 0);
 
             if (existing) {
-                // Soft follow host position (reduces teleport stutter)
+                if (hp < existing.hp - 2) {
+                    this.spawnBloodPuff(existing.x, existing.y);
+                }
                 const dx = x - existing.x;
                 const dy = y - existing.y;
                 if (Math.hypot(dx, dy) > 48) {
                     existing.x = x;
                     existing.y = y;
                 } else {
-                    // Snap hard toward host — guests were lagging behind with soft follow
                     existing.x += dx * 0.9;
                     existing.y += dy * 0.9;
                 }
@@ -801,6 +825,8 @@ class BattlefieldRenderer {
                 existing.chargeTargetX = chargeTargetX;
                 existing.hp = hp;
                 existing.maxHp = maxHp;
+                existing.isAiming = isAiming;
+                existing.grenades = grenades;
                 next.push(existing);
                 byId.delete(u.id);
             } else {
@@ -819,11 +845,11 @@ class BattlefieldRenderer {
                     chargeTargetX,
                     hp,
                     maxHp,
-                    grenades: type === 'skirmisher' ? 3 : 0,
+                    grenades,
                     grenadeCooldown: 0,
                     shootCooldown: 0,
                     aimTimer: 0,
-                    isAiming: false,
+                    isAiming,
                     currentTarget: null,
                     assignedBuildId: null,
                     assignedTargetId: null,
@@ -833,6 +859,11 @@ class BattlefieldRenderer {
                     range: type === 'machinegunner' ? 550 : (type === 'skirmisher' ? 180 : (type === 'engineer' || type === 'artilleryman' || type === 'officer' ? 260 : 450))
                 });
             }
+        }
+
+        // Units that vanished on host → local death puff
+        for (const [, gone] of byId) {
+            if (gone.hp > 0) this.spawnBloodPuff(gone.x, gone.y);
         }
         this.units = next;
 
@@ -880,6 +911,44 @@ class BattlefieldRenderer {
                 ...b,
                 assignedMedicId: null
             }));
+        }
+
+        // Gunfight VFX from host
+        if (Array.isArray(snap.fx)) {
+            const prevCount = this.tracers.length;
+            this.tracers = snap.fx.map(t => ({
+                startX: t.sx,
+                startY: t.sy,
+                targetX: t.tx,
+                targetY: t.ty,
+                life: t.life != null ? t.life : 0.12,
+                color: t.col || 'rgba(255, 230, 150, 0.9)'
+            }));
+            if (this.tracers.length > prevCount || (this.tracers.length > 0 && snap.t !== this._lastFxT)) {
+                heardShot = this.tracers.length > 0;
+            }
+            this._lastFxT = snap.t;
+        }
+
+        if (Array.isArray(snap.ord)) {
+            this.ordnance = snap.ord.map(o => ({
+                startX: o.sx,
+                startY: o.sy,
+                targetX: o.tx,
+                targetY: o.ty,
+                progress: o.p || 0,
+                speed: o.sp || 1.5,
+                type: o.tyo || o.type || 'he'
+            }));
+        }
+
+        if (heardShot && window.AudioEngine && typeof window.AudioEngine.playGunshot === 'function') {
+            // Throttle audio so MG bursts don't explode speakers
+            const now = performance.now();
+            if (!this._lastGuestShotSfx || now - this._lastGuestShotSfx > 80) {
+                window.AudioEngine.playGunshot();
+                this._lastGuestShotSfx = now;
+            }
         }
     }
 
@@ -2378,16 +2447,19 @@ class BattlefieldRenderer {
             waterColor: '#191511'
         });
 
-        const blastRadius = type === 'he' ? 55 : (isGrenade ? 48 : 35);
-        const maxDmg = type === 'he' ? 120 : (isGrenade ? 85 : 60);
-        this.units.forEach(u => {
-            const dist = Math.hypot(u.x - x, u.y - y);
-            if (dist < blastRadius) {
-                const dmg = (1 - (dist / blastRadius)) * maxDmg;
-                u.hp -= dmg;
-                if (u.hp <= 0) this.killSoldier(u);
-            }
-        });
+        // Guests only show VFX — host owns damage via snapshots
+        if (!this.mpGuestView) {
+            const blastRadius = type === 'he' ? 55 : (isGrenade ? 48 : 35);
+            const maxDmg = type === 'he' ? 120 : (isGrenade ? 85 : 60);
+            this.units.forEach(u => {
+                const dist = Math.hypot(u.x - x, u.y - y);
+                if (dist < blastRadius) {
+                    const dmg = (1 - (dist / blastRadius)) * maxDmg;
+                    u.hp -= dmg;
+                    if (u.hp <= 0) this.killSoldier(u);
+                }
+            });
+        }
 
         const particleCount = isGrenade ? 18 : (type === 'he' ? 25 : 40);
         for (let i = 0; i < particleCount; i++) {
