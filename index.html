@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Trenches 1917: High Command - Atmospheric WW1 2D Tactical Strategy Game. Command your forces on the Western Front from the War Room to No Man's Land.">
+    <title>Trenches 1917: High Command</title>
+    <!-- Google Fonts for Vintage Military & Modern HUD Aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Special+Elite&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-dark">
+    <!-- Ambient Overlay Effects -->
+    <div id="vignette-overlay" class="vignette"></div>
+    <div id="grain-overlay" class="grain"></div>
+
+    <!-- MAIN MENU: HIGH COMMAND WAR ROOM -->
+    <main id="main-menu" class="screen active">
+        <div class="war-room-background">
+            <div class="fog-layer"></div>
+            <div class="map-table-glow"></div>
+        </div>
+
+        <div class="menu-content-wrapper">
+            <header class="game-header">
+                <div class="military-stamp">CONFIDENTIAL • HIGH COMMAND HQ</div>
+                <h1 class="game-title">TRENCHES <span class="accent-year">1917</span></h1>
+                <p class="game-subtitle">WESTERN FRONT TACTICAL COMMAND</p>
+            </header>
+
+            <nav class="menu-navigation">
+                <button id="btn-start-battle" class="menu-btn primary-btn">
+                    <span class="btn-icon">⚔️</span>
+                    <span class="btn-text">ASSUME COMMAND</span>
+                    <span class="btn-subtext">Solo — Choose Alliance & Country to Deploy</span>
+                </button>
+
+                <button id="btn-multiplayer" class="menu-btn">
+                    <span class="btn-icon">📡</span>
+                    <span class="btn-text">MULTIPLAYER</span>
+                    <span class="btn-subtext">Create or join a room with a 5-digit code</span>
+                </button>
+
+                <button id="btn-war-cabinet" class="menu-btn">
+                    <span class="btn-icon">📜</span>
+                    <span class="btn-text">WAR CABINET & DOSSIER</span>
+                    <span class="btn-subtext">Inspect Factions & Army Doctrines</span>
+                </button>
+
+                <button id="btn-countryball-viewer" class="menu-btn">
+                    <span class="btn-icon">👁️</span>
+                    <span class="btn-text">COUNTRYBALL VIEWER</span>
+                    <span class="btn-subtext">Preview nation sprites &amp; kit loadouts</span>
+                </button>
+
+                <button id="btn-settings" class="menu-btn">
+                    <span class="btn-icon">⚙️</span>
+                    <span class="btn-text">HQ SETTINGS</span>
+                    <span class="btn-subtext">Audio, Graphics &amp; Atmospheric FX</span>
+                </button>
+
+                <button id="btn-credits" class="menu-btn">
+                    <span class="btn-icon">🎖️</span>
+                    <span class="btn-text">COMMENDATIONS & DISPATCHES</span>
+                    <span class="btn-subtext">Historical Intel & Credits</span>
+                </button>
+            </nav>
+
+            <footer class="war-room-footer">
+                <div class="telegraph-ticker-box">
+                    <span class="ticker-label">TELEGRAPH WIRE:</span>
+                    <div class="ticker-content" id="menu-ticker">
+                        CONFIDENTIAL: Somme Sector reports enemy artillery buildup • Reinforcements arriving at Railhead B • Weather forecast: Dense fog and mud...
+                    </div>
+                </div>
+            </footer>
+        </div>
+    </main>
+
+    <!-- BATTLEFIELD VIEW: HIGH COMMAND HUD & CANVAS -->
+    <section id="battlefield-screen" class="screen hidden">
+        <!-- TOP HUD BAR -->
+        <header id="battle-hud-top" class="hud-bar top-hud">
+            <div class="hud-group left">
+                <button id="btn-return-menu" class="hud-icon-btn" title="Return to War Room">
+                    <span>🔙 MENU</span>
+                </button>
+                <div class="faction-badge">
+                    <span id="player-flag-icon" class="flag-icon">🇬🇧</span>
+                    <span class="faction-name" id="player-faction-name">ENTENTE EXPEDITIONARY</span>
+                </div>
+            </div>
+
+            <!-- CAPTURE POINT INDICATORS -->
+            <div class="hud-group cp-indicators" id="hud-cp-bar">
+                <div class="cp-indicator" id="cp-0" title="CHARLIE-1">
+                    <span class="cp-dot" id="cp-dot-0">⚪</span>
+                    <span class="cp-label" id="cp-label-0">C-1</span>
+                </div>
+                <div class="cp-arrow">▶▶</div>
+                <div class="cp-indicator" id="cp-1" title="CHARLIE-2">
+                    <span class="cp-dot" id="cp-dot-1">⚪</span>
+                    <span class="cp-label" id="cp-label-1">C-2</span>
+                </div>
+                <div class="cp-arrow">▶▶</div>
+                <div class="cp-indicator" id="cp-2" title="CHARLIE-3">
+                    <span class="cp-dot" id="cp-dot-2">⚪</span>
+                    <span class="cp-label" id="cp-label-2">C-3</span>
+                </div>
+            </div>
+
+            <div class="hud-group center stats-cluster">
+                <!-- COMMAND STARS STAT BOX -->
+                <div class="stat-box star-box" id="hud-stars-box" title="Command Stars earned per 5 kills. Used to purchase HQ reinforcement streams!">
+                    <span class="stat-icon">⭐</span>
+                    <div class="stat-info">
+                        <span class="stat-label">COMMAND STARS</span>
+                        <span class="stat-value" id="hud-stars">1 ⭐</span>
+                    </div>
+                    <span class="kills-progress" id="hud-kills-progress">(0/5 Kills)</span>
+                </div>
+
+                <!-- COMMAND XP STAT BOX -->
+                <div class="stat-box xp-box" title="Command XP earned from active combat. Spend in the Upgrade Panel!">
+                    <span class="stat-icon">🎖️</span>
+                    <div class="stat-info">
+                        <span class="stat-label">COMMAND XP</span>
+                        <span class="stat-value" id="hud-xp">0 XP</span>
+                    </div>
+                </div>
+
+                <!-- RESERVE SPECIALISTS STAT BOX -->
+                <div class="stat-box" title="Specialists in Reserve Trench (MG | ENG | ART | MED | OFF)">
+                    <span class="stat-icon">🛠️</span>
+                    <div class="stat-info">
+                        <span class="stat-label">RESERVE SPECIALISTS</span>
+                        <span class="stat-value" id="hud-specialists">5 MG | 5 ENG | 5 ART | 5 MED</span>
+                    </div>
+                </div>
+
+                <div class="stat-box" title="Command Points generated for tactical orders">
+                    <span class="stat-icon">⚡</span>
+                    <div class="stat-info">
+                        <span class="stat-label">COMMAND POINTS</span>
+                        <span class="stat-value" id="hud-cp">100 / 100</span>
+                    </div>
+                    <div class="stat-bar-container"><div id="hud-cp-bar" class="stat-bar-fill cp-fill" style="width: 100%;"></div></div>
+                </div>
+
+                <div class="stat-box" title="Army Morale - Drops with casualties and lost trenches">
+                    <span class="stat-icon">🪖</span>
+                    <div class="stat-info">
+                        <span class="stat-label">ARMY MORALE</span>
+                        <span class="stat-value" id="hud-morale">85%</span>
+                    </div>
+                    <div class="stat-bar-container"><div id="hud-morale-bar" class="stat-bar-fill morale-fill" style="width: 85%;"></div></div>
+                </div>
+            </div>
+
+            <div class="hud-group right time-weather">
+                <button id="btn-open-upgrades" class="hud-icon-btn upgrade-nav-btn" title="Open High Command Upgrade Panel">
+                    <span>🎖️ UPGRADES</span>
+                </button>
+                <div class="battle-clock">
+                    <span id="battle-time" class="time-display">06:00 HOURS</span>
+                    <span id="battle-weather" class="weather-badge">🌫️ HEAVY FOG</span>
+                </div>
+                <div class="speed-controls">
+                    <button class="speed-btn active" data-speed="1">1x</button>
+                    <button class="speed-btn" data-speed="2">2x</button>
+                    <button class="speed-btn" data-speed="4">4x</button>
+                    <button id="btn-pause-battle" class="speed-btn pause-btn">⏸️</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- CANVAS GAME CONTAINER -->
+        <div id="canvas-container">
+            <canvas id="battlefield-canvas"></canvas>
+            
+            <!-- In-game Notification Overlay -->
+            <div id="tactical-banner" class="tactical-banner hidden">
+                <h2 id="banner-title">OVER THE TOP!</h2>
+                <p id="banner-desc">First Trench Wave Advancing into No Man's Land</p>
+            </div>
+
+            <!-- BUILD PANEL OVERLAY -->
+            <div id="build-panel" class="build-panel hidden">
+                <div class="build-panel-header">
+                    <span>📐 FIELD ENGINEERING & CONSTRUCTION</span>
+                    <button id="btn-close-build" class="close-panel-btn">&times;</button>
+                </div>
+                <div class="build-options">
+                    <button id="btn-build-mg-nest" class="build-card-btn" title="Requires 1 Engineer & 20 CP. 60s build time. Fortified Machine Gun Nest manned by MG Gunners!">
+                        <span class="build-icon">🏰</span>
+                        <div class="build-details">
+                            <span class="build-name">MACHINE GUN NEST</span>
+                            <span class="build-req">Req: 1 Engineer | 20 CP | 60s</span>
+                        </div>
+                    </button>
+                    <button id="btn-build-artillery" class="build-card-btn" title="Requires 1 Engineer & 30 CP. 90s build time. Field Artillery Gun manned by Artillery Men (1 Shell / 20s)!">
+                        <span class="build-icon">💥</span>
+                        <div class="build-details">
+                            <span class="build-name">FIELD ARTILLERY GUN</span>
+                            <span class="build-req">Req: 1 Engineer | 30 CP | 90s</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Minimap HUD widget -->
+            <div id="minimap-container" class="minimap-box">
+                <div class="minimap-header">SECTOR MAP</div>
+                <canvas id="minimap-canvas" width="180" height="90"></canvas>
+            </div>
+        </div>
+
+        <!-- TELEGRAPH TICKER BAR -->
+        <div id="telegraph-bar" class="telegraph-bar">
+            <span class="telegraph-icon">📡 TELEGRAPH DISPATCH:</span>
+            <div id="telegraph-feed" class="telegraph-feed">
+                <span class="dispatch-entry urgent">[06:05] ALL SECTORS: Enemy snipers active in No Man's Land. Prepare artillery response.</span>
+            </div>
+        </div>
+
+        <!-- COMMAND DECK (BOTTOM HUD) -->
+        <footer id="battle-hud-bottom" class="hud-bar bottom-hud">
+            <div class="command-deck">
+                <!-- HQ REINFORCEMENTS & CLASSES -->
+                <div class="command-category" id="cmd-hq-streams">
+                    <div class="category-header">HQ REINFORCEMENT STREAMS</div>
+                    <div class="button-row">
+                        <button class="order-btn hq-star-btn" data-order="buy_rifleman_stream" data-cost-star="1">
+                            <span class="order-icon">🪖</span>
+                            <span class="order-title">RIFLEMAN</span>
+                            <span class="order-sub-detail" id="hud-rifle-count">Active: 0</span>
+                            <span class="order-cost star-cost">1 ⭐ STAR</span>
+                        </button>
+                        <button class="order-btn hq-star-btn" data-order="buy_skirmisher_stream" data-cost-star="2">
+                            <span class="order-icon">💥</span>
+                            <span class="order-title">SKIRMISHER</span>
+                            <span class="order-sub-detail" id="hud-skirm-count">Active: 0</span>
+                            <span class="order-cost star-cost">2 ⭐ STARS</span>
+                        </button>
+                        <button class="order-btn hq-star-btn" data-order="buy_mg_stream" data-cost-star="2">
+                            <span class="order-icon">💣</span>
+                            <span class="order-title">MG GUNNER</span>
+                            <span class="order-sub-detail" id="hud-mg-count">Active: 0</span>
+                            <span class="order-cost star-cost">2 ⭐ STARS</span>
+                        </button>
+                        <button class="order-btn hq-star-btn" data-order="buy_artillery_stream" data-cost-star="3">
+                            <span class="order-icon">💥</span>
+                            <span class="order-title">ARTILLERY MAN</span>
+                            <span class="order-sub-detail" id="hud-art-count">Active: 0</span>
+                            <span class="order-cost star-cost">3 ⭐ STARS</span>
+                        </button>
+                        <button class="order-btn hq-star-btn" data-order="buy_engineer_stream" data-cost-star="3">
+                            <span class="order-icon">🛠️</span>
+                            <span class="order-title">ENGINEER</span>
+                            <span class="order-sub-detail" id="hud-eng-count">Active: 0</span>
+                            <span class="order-cost star-cost">3 ⭐ STARS</span>
+                        </button>
+                        <button class="order-btn hq-star-btn" data-order="buy_medic_stream" data-cost-star="3">
+                            <span class="order-icon">➕</span>
+                            <span class="order-title">MEDIC</span>
+                            <span class="order-sub-detail" id="hud-med-count">Active: 0</span>
+                            <span class="order-cost star-cost">3 ⭐ STARS</span>
+                        </button>
+                        <button class="order-btn hq-star-btn" id="btn-buy-officer" data-order="buy_officer_stream" data-cost-star="10">
+                            <span class="order-icon">🎖️</span>
+                            <span class="order-title">OFFICER</span>
+                            <span class="order-sub-detail" id="hud-off-count">Locked</span>
+                            <span class="order-cost star-cost">10 ⭐ STARS</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- FIELD ENGINEERING -->
+                <div class="command-category" id="cmd-construction">
+                    <div class="category-header">CONSTRUCTION</div>
+                    <div class="button-row">
+                        <button id="btn-toggle-build-panel" class="order-btn primary-action">
+                            <span class="order-icon">📐</span>
+                            <span class="order-title">BUILD PANEL</span>
+                            <span class="order-cost">ENGINEERING</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- INFANTRY TACTICS -->
+                <div class="command-category">
+                    <div class="category-header">INFANTRY TACTICS</div>
+                    <div class="button-row">
+                        <button class="order-btn primary-action" data-order="charge" data-cost="30" id="btn-order-charge">
+                            <span class="order-icon">🪖</span>
+                            <span class="order-title">OVER THE TOP</span>
+                            <span class="order-cost" id="cost-charge">30 CP</span>
+                        </button>
+                        <button class="order-btn primary-action" data-order="reinforce" data-cost="20" id="btn-order-reinforce">
+                            <span class="order-icon">📦</span>
+                            <span class="order-title">REINFORCEMENTS</span>
+                            <span class="order-cost" id="cost-reinforce">20 CP</span>
+                        </button>
+                        <button class="order-btn" data-order="dig_in" data-cost="15">
+                            <span class="order-icon">⛏️</span>
+                            <span class="order-title">FORTIFY TRENCH</span>
+                            <span class="order-cost">15 CP</span>
+                        </button>
+                        <button class="order-btn" data-order="fallback" data-cost="10">
+                            <span class="order-icon">🚩</span>
+                            <span class="order-title">TACTICAL RETREAT</span>
+                            <span class="order-cost">10 CP</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </section>
+
+    <!-- FACTION & COUNTRY SELECTION MODAL -->
+    <div id="modal-faction-select" class="modal hidden">
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2>CHOOSE YOUR ARMY & COUNTRY - 1917</h2>
+                <button class="close-modal-btn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <p class="faction-prompt-text">Select your Alliance and Country to lead on the Western Front:</p>
+                <div class="faction-select-grid">
+                    <!-- ALLIED ENTENTE SELECTION GROUP -->
+                    <div class="alliance-group-card">
+                        <div class="alliance-group-header">
+                            <span class="alliance-flag-group">🇬🇧 🇨🇦 🇫🇷 🇺🇸</span>
+                            <span class="alliance-group-title">ALLIED ENTENTE EXPEDITIONARY</span>
+                        </div>
+                        <p class="alliance-group-desc">Defend the West Trenches (Left). Choose your national expeditionary force:</p>
+                        <div class="country-sub-options">
+                            <button class="faction-card-btn country-btn" data-faction="entente" data-country="uk">
+                                <span class="faction-flag">🇬🇧</span>
+                                <div class="faction-info-box">
+                                    <span class="faction-title">UNITED KINGDOM (BEF)</span>
+                                    <span class="faction-desc">British Expeditionary Force with UK Countryball Troops!</span>
+                                </div>
+                            </button>
+                            <button class="faction-card-btn country-btn" data-faction="entente" data-country="canada">
+                                <span class="faction-flag">🇨🇦</span>
+                                <div class="faction-info-box">
+                                    <span class="faction-title">CANADA (CEF)</span>
+                                    <span class="faction-desc">Canadian Expeditionary Force with Custom Canada Countryball Troops!</span>
+                                </div>
+                            </button>
+                            <button class="faction-card-btn country-btn" data-faction="entente" data-country="france">
+                                <span class="faction-flag">🇫🇷</span>
+                                <div class="faction-info-box">
+                                    <span class="faction-title">FRANCE (POILUS)</span>
+                                    <span class="faction-desc">French Army Poilus with French Countryball Troops!</span>
+                                </div>
+                            </button>
+                            <button class="faction-card-btn country-btn" data-faction="entente" data-country="usa">
+                                <span class="faction-flag">🇺🇸</span>
+                                <div class="faction-info-box">
+                                    <span class="faction-title">UNITED STATES (AEF)</span>
+                                    <span class="faction-desc">American Expeditionary Force with Custom American Countryball Troops!</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- CENTRAL POWERS SELECTION GROUP -->
+                    <div class="alliance-group-card">
+                        <div class="alliance-group-header">
+                            <span class="alliance-flag-group">🇩🇪 🇦🇹 🇹🇷</span>
+                            <span class="alliance-group-title">CENTRAL POWERS IMPERIAL ARMY</span>
+                        </div>
+                        <p class="alliance-group-desc">Defend the East Trenches (Right). Choose your Imperial force:</p>
+                        <div class="country-sub-options">
+                            <button class="faction-card-btn country-btn" data-faction="central" data-country="germany">
+                                <span class="faction-flag">🇩🇪</span>
+                                <div class="faction-info-box">
+                                    <span class="faction-title">GERMAN IMPERIAL ARMY</span>
+                                    <span class="faction-desc">Imperial German Regiments with Custom German Countryball Troops!</span>
+                                </div>
+                            </button>
+                            <button class="faction-card-btn country-btn" data-faction="central" data-country="austria">
+                                <span class="faction-flag">🇦🇹</span>
+                                <div class="faction-info-box">
+                                    <span class="faction-title">AUSTRO-HUNGARIAN EMPIRE</span>
+                                    <span class="faction-desc">Imperial K.u.K. Austro-Hungarian Regiments with Custom Countryball Troops!</span>
+                                </div>
+                            </button>
+                            <button class="faction-card-btn country-btn" data-faction="central" data-country="ottoman">
+                                <span class="faction-flag">🇹🇷</span>
+                                <div class="faction-info-box">
+                                    <span class="faction-title">OTTOMAN EMPIRE</span>
+                                    <span class="faction-desc">Ottoman Imperial Army with Custom Ottoman Countryball Troops!</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UPGRADES MODAL PANEL -->
+    <div id="modal-upgrades" class="modal hidden">
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2>🎖️ HIGH COMMAND TECH & UPGRADE PANEL</h2>
+                <button class="close-modal-btn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="upgrade-tabs">
+                    <button class="tab-btn active" data-tab="firepower">🔥 FIREPOWER</button>
+                    <button class="tab-btn" data-tab="personnel">🪖 PERSONNEL</button>
+                </div>
+
+                <!-- FIREPOWER -->
+                <div id="tab-firepower" class="tab-content active">
+                    <div class="upgrade-view upgrade-sub-picker" data-view="picker">
+                        <p class="upgrade-view-hint">Select an upgrade branch:</p>
+                        <div class="upgrade-sub-grid">
+                            <button class="upgrade-sub-btn" data-branch="mg" data-division="firepower">
+                                <span class="sub-btn-icon">🔫</span>
+                                <span class="sub-btn-title">MACHINE GUN UPGRADES</span>
+                                <span class="sub-btn-desc">Nest heat, accuracy &amp; rate of fire</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="upgrade-view upgrade-branch-view hidden" data-view="mg">
+                        <button class="upgrade-back-btn" data-back="firepower" type="button">← Back to Firepower</button>
+                        <h3 class="upgrade-branch-title">MACHINE GUN RESEARCH TREE</h3>
+                        <div class="upgrade-tier-chain">
+                            <div class="upgrade-tier-node">
+                                <div class="upgrade-title">MG TIER ONE</div>
+                                <div class="upgrade-desc">10% chance for Machine Gun Nests to NOT accumulate heat during blind fire bursts.</div>
+                                <div class="upgrade-cost">Cost: 500 XP</div>
+                                <button class="upgrade-buy-btn" data-upgrade="mgTier1">BUY UPGRADE (500 XP)</button>
+                            </div>
+                            <div class="upgrade-tier-connector" aria-hidden="true">
+                                <div class="tier-line"></div>
+                                <div class="tier-arrow">▼</div>
+                            </div>
+                            <div class="upgrade-tier-node">
+                                <div class="upgrade-title">MG TIER TWO</div>
+                                <div class="upgrade-desc">+10% firing accuracy for Machine Gun Nests.</div>
+                                <div class="upgrade-req">Requires MG Tier One</div>
+                                <div class="upgrade-cost">Cost: 1000 XP</div>
+                                <button class="upgrade-buy-btn" data-upgrade="mgTier2">BUY UPGRADE (1000 XP)</button>
+                            </div>
+                            <div class="upgrade-tier-connector" aria-hidden="true">
+                                <div class="tier-line"></div>
+                                <div class="tier-arrow">▼</div>
+                            </div>
+                            <div class="upgrade-tier-node">
+                                <div class="upgrade-title">MG TIER THREE</div>
+                                <div class="upgrade-desc">+20% faster firing rate for Machine Gun Nests.</div>
+                                <div class="upgrade-req">Requires MG Tier Two</div>
+                                <div class="upgrade-cost">Cost: 1500 XP</div>
+                                <button class="upgrade-buy-btn" data-upgrade="mgTier3">BUY UPGRADE (1500 XP)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PERSONNEL -->
+                <div id="tab-personnel" class="tab-content hidden">
+                    <div class="upgrade-view upgrade-sub-picker" data-view="picker">
+                        <p class="upgrade-view-hint">Select an upgrade branch:</p>
+                        <div class="upgrade-sub-grid">
+                            <button class="upgrade-sub-btn" data-branch="rifle" data-division="personnel">
+                                <span class="sub-btn-icon">🪖</span>
+                                <span class="sub-btn-title">RIFLEMEN UPGRADES</span>
+                                <span class="sub-btn-desc">Bayonet, damage &amp; trench armor</span>
+                            </button>
+                            <button class="upgrade-sub-btn" data-branch="officer" data-division="personnel">
+                                <span class="sub-btn-icon">🎖️</span>
+                                <span class="sub-btn-title">OFFICER UPGRADES</span>
+                                <span class="sub-btn-desc">Unlock field officers &amp; command bonuses</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="upgrade-view upgrade-branch-view hidden" data-view="rifle">
+                        <button class="upgrade-back-btn" data-back="personnel" type="button">← Back to Personnel</button>
+                        <h3 class="upgrade-branch-title">RIFLEMEN RESEARCH TREE</h3>
+                        <div class="upgrade-tier-chain">
+                            <div class="upgrade-tier-node">
+                                <div class="upgrade-title">RIFLEMAN TIER ONE</div>
+                                <div class="upgrade-desc">Unlocks Bayonet Melee when enemies enter close contact (&lt;25px).</div>
+                                <div class="upgrade-cost">Cost: 500 XP</div>
+                                <button class="upgrade-buy-btn" data-upgrade="rifleTier1">BUY UPGRADE (500 XP)</button>
+                            </div>
+                            <div class="upgrade-tier-connector" aria-hidden="true">
+                                <div class="tier-line"></div>
+                                <div class="tier-arrow">▼</div>
+                            </div>
+                            <div class="upgrade-tier-node">
+                                <div class="upgrade-title">RIFLEMAN TIER TWO</div>
+                                <div class="upgrade-desc">Riflemen shots deal 10% more damage.</div>
+                                <div class="upgrade-req">Requires Rifleman Tier One</div>
+                                <div class="upgrade-cost">Cost: 1000 XP</div>
+                                <button class="upgrade-buy-btn" data-upgrade="rifleTier2">BUY UPGRADE (1000 XP)</button>
+                            </div>
+                            <div class="upgrade-tier-connector" aria-hidden="true">
+                                <div class="tier-line"></div>
+                                <div class="tier-arrow">▼</div>
+                            </div>
+                            <div class="upgrade-tier-node">
+                                <div class="upgrade-title">RIFLEMAN TIER THREE</div>
+                                <div class="upgrade-desc">+15% Max HP and Trench Armor for all Riflemen.</div>
+                                <div class="upgrade-req">Requires Rifleman Tier Two</div>
+                                <div class="upgrade-cost">Cost: 1500 XP</div>
+                                <button class="upgrade-buy-btn" data-upgrade="rifleTier3">BUY UPGRADE (1500 XP)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="upgrade-view upgrade-branch-view hidden" data-view="officer">
+                        <button class="upgrade-back-btn" data-back="personnel" type="button">← Back to Personnel</button>
+                        <h3 class="upgrade-branch-title">OFFICER RESEARCH TREE</h3>
+                        <div class="upgrade-tier-chain">
+                            <div class="upgrade-tier-node">
+                                <div class="upgrade-title">OFFICER TIER ONE</div>
+                                <div class="upgrade-desc">Unlocks Officer Class! Aids Engineers (+50% build speed), Frontline Riflemen (10% one-shot), and Artillery (90% accuracy).</div>
+                                <div class="upgrade-cost">Cost: 500 XP</div>
+                                <button class="upgrade-buy-btn" data-upgrade="officerTier1">BUY UPGRADE (500 XP)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DIALOGS -->
+    <div id="modal-war-cabinet" class="modal hidden">
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2>WAR CABINET DOSSIER - 1917</h2>
+                <button class="close-modal-btn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="dossier-grid">
+                    <div class="dossier-card">
+                        <h3>🇬🇧 BRITISH EXPEDITIONARY FORCE</h3>
+                        <p class="faction-motto">"Victory through tenacity and heavy artillery support."</p>
+                    </div>
+                    <div class="dossier-card">
+                        <h3>🇨🇦 CANADIAN EXPEDITIONARY FORCE</h3>
+                        <p class="faction-motto">"Shock troops of the Western Front."</p>
+                    </div>
+                    <div class="dossier-card">
+                        <h3>🇫🇷 FRENCH ARMY (POILUS)</h3>
+                        <p class="faction-motto">"Ils ne passeront pas!"</p>
+                    </div>
+                    <div class="dossier-card">
+                        <h3>🇺🇸 AMERICAN EXPEDITIONARY FORCE</h3>
+                        <p class="faction-motto">"Lafayette, we are here!"</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-settings" class="modal hidden">
+        <div class="modal-content medium">
+            <header class="modal-header">
+                <h2>HIGH COMMAND SETTINGS</h2>
+                <button class="close-modal-btn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="setting-row">
+                    <label for="setting-audio-toggle">Master Sound & Ambience</label>
+                    <input type="checkbox" id="setting-audio-toggle" checked>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-credits" class="modal hidden">
+        <div class="modal-content medium">
+            <header class="modal-header">
+                <h2>HISTORICAL DISPATCHES & CREDITS</h2>
+                <button class="close-modal-btn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <p><strong>Trenches 1917: High Command</strong> - 7 Playable Nations: UK, Canada, France, USA, Germany, Austria-Hungary, Ottoman Empire.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-multiplayer" class="modal hidden">
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2>MULTIPLAYER LOBBY</h2>
+                <button class="close-modal-btn" id="btn-mp-close">&times;</button>
+            </header>
+            <div class="modal-body mp-body">
+                <p id="mp-status" class="mp-status">Open this page via <strong>http://localhost:8765</strong> (run <code>npm start</code>).</p>
+
+                <!-- STEP 1: create / join (hidden once in a room) -->
+                <div id="mp-gate" class="mp-panel">
+                    <div class="mp-row">
+                        <label for="mp-player-name">Callsign</label>
+                        <input type="text" id="mp-player-name" maxlength="24" placeholder="Commander" value="Commander">
+                    </div>
+
+                    <div class="mp-gate-grid">
+                        <div class="mp-gate-card">
+                            <h3>Host a room</h3>
+                            <button type="button" id="btn-mp-create" class="menu-btn primary-btn mp-action-btn">
+                                <span class="btn-text">CREATE ROOM</span>
+                                <span class="btn-subtext">Get a 5-digit code to share</span>
+                            </button>
+                        </div>
+                        <div class="mp-gate-card">
+                            <h3>Join a room</h3>
+                            <input type="text" id="mp-join-code" maxlength="5" inputmode="numeric" pattern="[0-9]*" placeholder="12345" autocomplete="off" class="mp-code-input">
+                            <button type="button" id="btn-mp-join" class="menu-btn mp-action-btn">
+                                <span class="btn-text">JOIN ROOM</span>
+                                <span class="btn-subtext">Type the host’s 5-digit code</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 2: in-room lobby (hidden until create/join succeeds) -->
+                <div id="mp-lobby" class="mp-panel hidden">
+                    <div class="mp-code-banner">
+                        <span class="mp-code-label">ROOM CODE</span>
+                        <span id="mp-room-code" class="mp-room-code">-----</span>
+                        <button type="button" id="btn-mp-copy-code" class="mp-mini-btn">Copy</button>
+                    </div>
+
+                    <div id="mp-host-settings" class="mp-host-settings hidden">
+                        <span class="mp-settings-label">Host settings</span>
+                        <div class="mp-mode-toggle">
+                            <button type="button" class="mp-mode-btn active" data-mode="versus">VERSUS</button>
+                            <button type="button" class="mp-mode-btn" data-mode="coop">CO-OP</button>
+                        </div>
+                        <p class="mp-hint">Mode auto-sets from countries: same alliance = CO-OP, mixed = VERSUS. Host still starts the match.</p>
+                    </div>
+                    <p id="mp-mode-readonly" class="mp-hint hidden">Mode: <strong id="mp-mode-label">versus</strong> — host controls settings &amp; start</p>
+
+                    <div class="mp-columns">
+                        <div class="mp-col">
+                            <h3>Players</h3>
+                            <ul id="mp-player-list" class="mp-player-list"></ul>
+                        </div>
+                        <div class="mp-col">
+                            <h3>Pick country <span class="mp-muted">(no doubles)</span></h3>
+                            <div id="mp-country-grid" class="mp-country-grid"></div>
+                        </div>
+                    </div>
+
+                    <div class="mp-lobby-actions">
+                        <button type="button" id="btn-mp-ready" class="menu-btn">READY</button>
+                        <button type="button" id="btn-mp-start" class="menu-btn primary-btn hidden">START MATCH</button>
+                        <button type="button" id="btn-mp-leave" class="menu-btn">LEAVE ROOM</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-countryball-viewer" class="modal hidden">
+        <div class="modal-content medium">
+            <header class="modal-header">
+                <h2>👁️ COUNTRYBALL VIEWER</h2>
+                <button class="close-modal-btn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="cb-viewer-layout">
+                    <div class="cb-viewer-controls">
+                        <label class="cb-viewer-field">
+                            <span>Country</span>
+                            <select id="cb-viewer-country">
+                                <option value="uk">United Kingdom</option>
+                                <option value="canada">Canada</option>
+                                <option value="france" selected>France</option>
+                                <option value="usa">United States</option>
+                                <option value="germany">Germany</option>
+                                <option value="austria">Austria-Hungary</option>
+                                <option value="ottoman">Ottoman Empire</option>
+                            </select>
+                        </label>
+                        <label class="cb-viewer-field">
+                            <span>Role / Kit</span>
+                            <select id="cb-viewer-role">
+                                <option value="rifleman" selected>Rifleman (Kar98k)</option>
+                                <option value="skirmisher">Skirmisher (Shotgun + Grenades)</option>
+                                <option value="machinegunner">Machine Gunner (MG 08)</option>
+                                <option value="officer">Officer (Pistol)</option>
+                                <option value="medic">Medic (Rifle)</option>
+                                <option value="engineer">Engineer (Pistol)</option>
+                                <option value="artilleryman">Artilleryman</option>
+                            </select>
+                        </label>
+                        <label class="cb-viewer-field">
+                            <span>Zoom</span>
+                            <input type="range" id="cb-viewer-zoom" min="1.5" max="4" step="0.1" value="2.5">
+                        </label>
+                    </div>
+                    <div class="cb-viewer-stage">
+                        <canvas id="cb-viewer-canvas" width="360" height="280"></canvas>
+                        <div id="cb-viewer-label" class="cb-viewer-label">France — Rifleman</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="code/sim/unlocks.js"></script>
+    <script src="js/battlefield.js"></script>
+    <script src="js/gameEngine.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/mpClient.js"></script>
+    <script src="js/countryballViewer.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

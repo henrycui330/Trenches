@@ -1,0 +1,15 @@
+{
+  "name": "trenches-1917",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Trenches 1917 — Western Front tactical game with WebSocket multiplayer",
+  "scripts": {
+    "start": "node server/index.js",
+    "server": "node server/index.js",
+    "test:unlocks": "node code/sim/unlocks.test.js",
+    "test:rooms": "node server/rooms.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
