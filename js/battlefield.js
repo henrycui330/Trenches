@@ -1086,9 +1086,12 @@ class BattlefieldRenderer {
         this.clampCamera();
 
         if (this.mpGuestView) {
-            // Presentation only — do NOT run combat/capture (that was causing huge MP lag)
+            // Guests: show gunfights locally (tracers/aim). Host snaps still own real HP/deaths.
+            this.combatVisualOnly = true;
             this.updateSoldierMovement(dtSec);
+            this.updateSoldierCombat(dtSec);
         } else {
+            this.combatVisualOnly = false;
             this.updateFallenBodies(dtSec);
             this.updateMedicBehavior(dtSec);
             this.updateOfficerBehavior(dtSec);
@@ -1365,17 +1368,21 @@ class BattlefieldRenderer {
             const unlocks = this._getUnlocksForOwner(u.ownerId);
             
             if (u.faction === 'entente') {
-                u.inCover = (Math.abs(u.x - this.ententeTrenchX) < 25) || (Math.abs(u.x - this.ententeSupportTrenchX) < 25);
+                u.inCover = (Math.abs(u.x - this.ententeTrenchX) < 25) || (Math.abs(u.x - this.ententeSupportTrenchX) < 25)
+                    || this.capturePoints.some(cp => Math.abs(u.x - cp.x) < 30);
             } else {
-                u.inCover = (Math.abs(u.x - this.centralTrenchX) < 25) || (Math.abs(u.x - this.centralSupportTrenchX) < 25);
+                u.inCover = (Math.abs(u.x - this.centralTrenchX) < 25) || (Math.abs(u.x - this.centralSupportTrenchX) < 25)
+                    || this.capturePoints.some(cp => Math.abs(u.x - cp.x) < 30);
             }
 
             if (unlocks.rifleTier1 && u.type === 'rifleman') {
                 const meleeVictim = this.units.find(e => e.faction !== u.faction && e.hp > 0 && Math.hypot(e.x - u.x, e.y - u.y) < 25);
                 if (meleeVictim) {
-                    meleeVictim.hp -= 60;
                     this.spawnBloodPuff(meleeVictim.x, meleeVictim.y);
-                    if (meleeVictim.hp <= 0) this.killSoldier(meleeVictim);
+                    if (!this.combatVisualOnly) {
+                        meleeVictim.hp -= 60;
+                        if (meleeVictim.hp <= 0) this.killSoldier(meleeVictim);
+                    }
                     continue;
                 }
             }
@@ -1540,10 +1547,12 @@ class BattlefieldRenderer {
                 if (window.AudioEngine && typeof window.AudioEngine.playGunshot === 'function') window.AudioEngine.playGunshot();
 
                 if (isHit && victim) {
-                    const dmg = 35 + Math.random() * 25;
-                    victim.hp -= dmg;
                     this.spawnBloodPuff(victim.x, victim.y);
-                    if (victim.hp <= 0) this.killSoldier(victim);
+                    if (!this.combatVisualOnly) {
+                        const dmg = 35 + Math.random() * 25;
+                        victim.hp -= dmg;
+                        if (victim.hp <= 0) this.killSoldier(victim);
+                    }
                 }
             }, b * 70);
         }
@@ -1567,7 +1576,7 @@ class BattlefieldRenderer {
             off.hp > 0 &&
             Math.hypot(off.x - u.x, off.y - u.y) < 140
         );
-        const isOneShotKill = isOfficerAidingFront && Math.random() < 0.10;
+        const isOneShotKill = !this.combatVisualOnly && isOfficerAidingFront && Math.random() < 0.10;
 
         const isHit = Math.random() < hitChance || isOneShotKill;
 
@@ -1585,23 +1594,20 @@ class BattlefieldRenderer {
         if (window.AudioEngine && typeof window.AudioEngine.playGunshot === 'function') window.AudioEngine.playGunshot();
 
         if (isHit) {
-            let damage;
-            if (u.type === 'skirmisher') {
-                damage = 55 + Math.random() * 30; // shotgun punch
-            } else if (u.type === 'rifleman' || u.type === 'medic') {
-                damage = 35 + Math.random() * 25;
-            } else {
-                damage = 25 + Math.random() * 20;
-            }
-            
-            if (unlocks.rifleTier2 && u.type === 'rifleman') damage *= 1.10;
-            if (isOneShotKill) damage = 999;
-
-            enemy.hp -= damage;
             this.spawnBloodPuff(enemy.x, enemy.y);
-
-            if (enemy.hp <= 0) {
-                this.killSoldier(enemy);
+            if (!this.combatVisualOnly) {
+                let damage;
+                if (u.type === 'skirmisher') {
+                    damage = 55 + Math.random() * 30;
+                } else if (u.type === 'rifleman' || u.type === 'medic') {
+                    damage = 35 + Math.random() * 25;
+                } else {
+                    damage = 25 + Math.random() * 20;
+                }
+                if (unlocks.rifleTier2 && u.type === 'rifleman') damage *= 1.10;
+                if (isOneShotKill) damage = 999;
+                enemy.hp -= damage;
+                if (enemy.hp <= 0) this.killSoldier(enemy);
             }
         }
     }
@@ -2305,7 +2311,9 @@ class BattlefieldRenderer {
             }
 
             // Draw Countryball Sprite — per-unit country (UK ally ≠ USA ally)
-            const unitCountry = unit.country || (unit.faction === this.playerFaction ? this.playerCountry : this._getEnemyCountry());
+            const unitCountry = unit.country
+                || this._countryForOwner(unit.ownerId, unit.faction)
+                || (unit.faction === this.playerFaction ? this.playerCountry : this._getEnemyCountry());
             const sprite = this._getCountrySprite(unitCountry);
 
             if (sprite.loaded) {
