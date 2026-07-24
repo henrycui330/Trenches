@@ -131,21 +131,44 @@ class UIController {
             returnBtn.addEventListener('click', () => {
                 if (this.engine) this.engine.pause();
                 this.switchScreen('menu');
+                this.syncGuestGfxControls();
             });
         }
 
         // BUILD PANEL TOGGLES
         const buildToggleBtn = document.getElementById('btn-toggle-build-panel');
         if (buildToggleBtn) {
-            buildToggleBtn.addEventListener('click', () => {
-                if (this.buildPanel) this.buildPanel.classList.toggle('hidden');
+            buildToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleBuildPanel();
             });
         }
 
         const closeBuildBtn = document.getElementById('btn-close-build');
         if (closeBuildBtn) {
-            closeBuildBtn.addEventListener('click', () => {
-                if (this.buildPanel) this.buildPanel.classList.add('hidden');
+            closeBuildBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.hideBuildPanel();
+            });
+        }
+
+        if (this.buildPanel) {
+            this.buildPanel.addEventListener('mousedown', (e) => e.stopPropagation());
+            this.buildPanel.addEventListener('click', (e) => e.stopPropagation());
+        }
+
+        const guestGfxBtn = document.getElementById('btn-guest-gfx');
+        if (guestGfxBtn) {
+            guestGfxBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleGuestGfxMode();
+            });
+        }
+
+        const guestGfxSelect = document.getElementById('setting-guest-gfx');
+        if (guestGfxSelect) {
+            guestGfxSelect.addEventListener('change', () => {
+                this.applyGuestGfxMode(guestGfxSelect.value === 'lite');
             });
         }
 
@@ -166,7 +189,7 @@ class UIController {
 
                 this.engine.state.commandPoints -= 20;
                 this.engine.renderer.enableBuildMode('mg_nest');
-                if (this.buildPanel) this.buildPanel.classList.add('hidden');
+                this.hideBuildPanel();
 
                 this.triggerBannerNotification('build_mg');
             });
@@ -189,7 +212,7 @@ class UIController {
 
                 this.engine.state.commandPoints -= 30;
                 this.engine.renderer.enableBuildMode('artillery_gun');
-                if (this.buildPanel) this.buildPanel.classList.add('hidden');
+                this.hideBuildPanel();
 
                 this.triggerBannerNotification('build_artillery');
             });
@@ -371,9 +394,22 @@ class UIController {
 
     openModal(modalKey) {
         this.initElements();
+        this.hideBuildPanel();
+        this.uiBusy = true;
+        if (this.engine && this.engine.renderer && this.engine.renderer.camera) {
+            this.engine.renderer.camera.isDragging = false;
+        }
         if (this.modals[modalKey]) {
-            this.modals[modalKey].classList.remove('hidden');
-            this.modals[modalKey].classList.add('active');
+            const el = this.modals[modalKey];
+            el.classList.remove('hidden');
+            // Double rAF so CSS transition + display settle (stops guest panel flicker)
+            requestAnimationFrame(() => {
+                el.classList.add('active');
+                requestAnimationFrame(() => {
+                    el.classList.add('active');
+                    el.style.pointerEvents = 'auto';
+                });
+            });
         }
         if (modalKey === 'upgrades') {
             this.resetUpgradeDivisionView('firepower');
@@ -427,15 +463,84 @@ class UIController {
     }
 
     closeAllModals() {
+        this.uiBusy = false;
         Object.values(this.modals).forEach(m => {
             if (!m) return;
             m.classList.remove('active');
             m.classList.add('hidden');
+            m.style.pointerEvents = '';
         });
+    }
+
+    toggleBuildPanel() {
+        this.initElements();
+        if (!this.buildPanel) return;
+        if (this.buildPanel.classList.contains('open')) this.hideBuildPanel();
+        else this.showBuildPanel();
+    }
+
+    showBuildPanel() {
+        this.initElements();
+        if (!this.buildPanel) return;
+        this.uiBusy = true;
+        if (this.engine && this.engine.renderer && this.engine.renderer.camera) {
+            this.engine.renderer.camera.isDragging = false;
+        }
+        this.buildPanel.classList.remove('hidden');
+        this.buildPanel.classList.add('open');
+    }
+
+    hideBuildPanel() {
+        if (!this.buildPanel) this.buildPanel = document.getElementById('build-panel');
+        if (!this.buildPanel) return;
+        this.buildPanel.classList.remove('open');
+        this.buildPanel.classList.add('hidden');
+        // Keep uiBusy if a modal is still open
+        const modalOpen = Object.values(this.modals || {}).some(m => m && m.classList.contains('active'));
+        if (!modalOpen) this.uiBusy = false;
+    }
+
+    toggleGuestGfxMode() {
+        if (!this.engine || !this.engine.renderer || !this.engine.isMpGuest()) return;
+        const nextLite = !this.engine.renderer.isGuestLite();
+        this.applyGuestGfxMode(nextLite);
+    }
+
+    applyGuestGfxMode(lite) {
+        if (!this.engine || !this.engine.renderer) return;
+        this.engine.renderer.setGuestRenderLite(!!lite);
+        this.syncGuestGfxControls();
+        if (this.engine.notifyTelegraph) {
+            this.engine.notifyTelegraph(
+                lite
+                    ? 'GRAPHICS: LITE mode — smoother on this device.'
+                    : 'GRAPHICS: NORMAL mode — full battlefield visuals.',
+                true
+            );
+        }
+    }
+
+    syncGuestGfxControls() {
+        const isGuest = !!(this.engine && this.engine.isMpGuest && this.engine.isMpGuest());
+        const btn = document.getElementById('btn-guest-gfx');
+        const label = document.getElementById('btn-guest-gfx-label');
+        const row = document.getElementById('setting-guest-gfx-row');
+        const hint = document.getElementById('setting-guest-gfx-hint');
+        const select = document.getElementById('setting-guest-gfx');
+        const lite = !!(this.engine && this.engine.renderer && this.engine.renderer.isGuestLite());
+
+        if (btn) btn.classList.toggle('hidden', !isGuest);
+        if (label) label.textContent = lite ? '⚡ LITE' : '🎞 NORMAL';
+        if (row) row.classList.toggle('hidden', !isGuest);
+        if (hint) hint.classList.toggle('hidden', !isGuest);
+        if (select) select.value = lite ? 'lite' : 'normal';
     }
 
     updateHUD(state) {
         this.initElements();
+
+        // While a panel/modal is open, only refresh critical meters (stops guest panel flicker)
+        const lightHud = !!this.uiBusy;
 
         // Player Country Flag & Badge Title
         const flags = { uk: '🇬🇧', canada: '🇨🇦', france: '🇫🇷', usa: '🇺🇸', germany: '🇩🇪', austria: '🇦🇹', ottoman: '🇹🇷' };
@@ -490,6 +595,8 @@ class UIController {
 
         // Time
         if (this.timeText) this.timeText.innerText = this.engine ? this.engine.getFormattedTime() : '06:00 HOURS';
+
+        if (lightHud) return; // skip CP-dot churn / button disable thrash while panels open
 
         // Capture Point HUD Dots (Western only)
         if (this.engine && this.engine.renderer && this.engine.renderer.capturePoints && this.engine.renderer.capturePoints.length > 0) {
@@ -888,6 +995,11 @@ class UIController {
             if (this.engine.renderer) {
                 this.engine.renderer.mpRoster = roster;
                 this.engine.renderer.mpGuestView = !isHost;
+                if (!isHost) {
+                    this.engine.renderer.loadGuestGfxPreference();
+                } else {
+                    this.engine.renderer.guestRenderLite = false;
+                }
             }
 
             this.mp.onSnapshot = (snap) => this.engine.applyMpSnapshot(snap);
@@ -926,8 +1038,11 @@ class UIController {
             requestAnimationFrame(() => {
                 if (this.engine && this.engine.renderer) this.engine.renderer.resize();
                 this.engine.notifyStateChange();
+                this.syncGuestGfxControls();
             });
         }
+
+        this.syncGuestGfxControls();
 
         const modeLabel = room.mode === 'coop' ? 'CO-OP' : 'VERSUS';
         const allyNames = (room.players || [])

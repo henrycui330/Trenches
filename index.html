@@ -163,6 +163,9 @@
                 <button id="btn-open-upgrades" class="hud-icon-btn upgrade-nav-btn" title="Open High Command Upgrade Panel">
                     <span>🎖️ UPGRADES</span>
                 </button>
+                <button id="btn-guest-gfx" class="hud-icon-btn guest-gfx-btn hidden" title="Guest graphics: Lite (fast) or Normal (full)">
+                    <span id="btn-guest-gfx-label">⚡ LITE</span>
+                </button>
                 <div class="battle-clock">
                     <span id="battle-time" class="time-display">06:00 HOURS</span>
                     <span id="battle-weather" class="weather-badge">🌫️ HEAVY FOG</span>
@@ -577,6 +580,14 @@
                     <label for="setting-audio-toggle">Master Sound & Ambience</label>
                     <input type="checkbox" id="setting-audio-toggle" checked>
                 </div>
+                <div id="setting-guest-gfx-row" class="setting-row hidden">
+                    <label for="setting-guest-gfx">Guest graphics mode</label>
+                    <select id="setting-guest-gfx">
+                        <option value="lite">Lite — faster (recommended)</option>
+                        <option value="normal">Normal — full fog, trenches, FX</option>
+                    </select>
+                </div>
+                <p id="setting-guest-gfx-hint" class="mp-hint hidden">Only applies on multiplayer guest screens. Host always runs full graphics.</p>
             </div>
         </div>
     </div>

@@ -643,10 +643,22 @@ html, body {
     z-index: 35;
     width: 320px;
     padding: 12px;
+    display: none;
+    pointer-events: auto;
+}
+
+.build-panel.open {
+    display: block;
 }
 
 .build-panel.hidden {
-    display: none;
+    display: none !important;
+}
+
+.guest-gfx-btn {
+    font-size: 0.72rem;
+    letter-spacing: 0.5px;
+    min-width: 5.5rem;
 }
 
 .build-panel-header {

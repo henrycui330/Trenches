@@ -124,6 +124,11 @@ class BattlefieldRenderer {
         this.mpRoster = null;
         /** Guest clients: skip local combat/CP sim; host snapshots are authority. */
         this.mpGuestView = false;
+        /**
+         * Guest graphics LOD (user toggle). true = lite (default), false = full visuals.
+         * Only applies when mpGuestView is set.
+         */
+        this.guestRenderLite = true;
         this._mpDeadBodyAcc = 0;
 
         // 3 Neutral Capture Points across No Man's Land
@@ -144,6 +149,47 @@ class BattlefieldRenderer {
         };
 
         this.init();
+    }
+
+    /** Guest + lite graphics preference. */
+    isGuestLite() {
+        return !!this.mpGuestView && this.guestRenderLite !== false;
+    }
+
+    setGuestRenderLite(lite) {
+        this.guestRenderLite = !!lite;
+        try {
+            localStorage.setItem('trenches_guest_gfx', lite ? 'lite' : 'normal');
+        } catch (_) { /* ignore */ }
+        if (lite) {
+            this._enforceGuestFxCaps();
+            if (this.weather) {
+                this.weather.fogParticles = [];
+                this.weather.rainParticles = [];
+            }
+        } else if (this.mpGuestView && this.weather) {
+            // Rebuild fog for normal mode if we cleared it in lite
+            if (!this.weather.fogParticles.length) {
+                for (let i = 0; i < 40; i++) {
+                    this.weather.fogParticles.push({
+                        x: Math.random() * this.worldWidth,
+                        y: Math.random() * this.worldHeight,
+                        radius: 120 + Math.random() * 180,
+                        vx: 0.1 + Math.random() * 0.25,
+                        opacity: 0.08 + Math.random() * 0.12
+                    });
+                }
+            }
+        }
+        console.log('[MP] guest graphics:', lite ? 'LITE' : 'NORMAL');
+    }
+
+    loadGuestGfxPreference() {
+        try {
+            const v = localStorage.getItem('trenches_guest_gfx');
+            if (v === 'normal') this.guestRenderLite = false;
+            else if (v === 'lite') this.guestRenderLite = true;
+        } catch (_) { /* ignore */ }
     }
 
     applyMapLayout() {
@@ -223,7 +269,7 @@ class BattlefieldRenderer {
         const nmlLeft = this.ententeTrenchX + 80;
         const nmlRight = this.centralTrenchX - 80;
         const nmlWidth = Math.max(200, nmlRight - nmlLeft);
-        const guestLite = !!this.mpGuestView;
+        const guestLite = this.isGuestLite();
         const craterCount = guestLite ? 16 : 80;
 
         for (let i = 0; i < craterCount; i++) {
@@ -817,14 +863,14 @@ class BattlefieldRenderer {
             const grenades = u.g != null ? u.g : (u.grenades || 0);
 
             if (existing) {
-                if (hp < existing.hp - 2 && !this.mpGuestView) {
+                if (hp < existing.hp - 2 && !this.isGuestLite()) {
                     this.spawnBloodPuff(existing.x, existing.y);
                 }
                 const dx = x - existing.x;
                 const dy = y - existing.y;
                 // Guest: snap harder (less per-unit math) — smoother camera under load
-                const blend = this.mpGuestView ? 1 : 0.9;
-                const snapDist = this.mpGuestView ? 24 : 48;
+                const blend = this.isGuestLite() ? 1 : 0.9;
+                const snapDist = this.isGuestLite() ? 24 : 48;
                 if (Math.hypot(dx, dy) > snapDist) {
                     existing.x = x;
                     existing.y = y;
@@ -985,7 +1031,7 @@ class BattlefieldRenderer {
     initWeather() {
         this.weather.fogParticles = [];
         this.weather.rainParticles = [];
-        if (this.mpGuestView) return; // guests skip weather entirely
+        if (this.isGuestLite()) return; // lite guests skip weather fill
         for (let i = 0; i < 60; i++) {
             this.weather.fogParticles.push({
                 x: Math.random() * this.worldWidth,
@@ -1009,6 +1055,7 @@ class BattlefieldRenderer {
     setupCameraControls() {
         const c = this.canvas;
         c.addEventListener('mousedown', (e) => {
+            if (window.UIController && window.UIController.uiBusy) return;
             if (e.button === 0 && !this.buildMode.active) {
                 this.camera.isDragging = true;
                 this.camera.dragStartX = e.clientX;
@@ -1119,16 +1166,17 @@ class BattlefieldRenderer {
     // --- MAIN RENDER & UPDATE LOOP ---
     render(deltaTime = 16) {
         const dtSec = deltaTime / 1000;
-        const guestLite = !!this.mpGuestView;
+        const isGuest = !!this.mpGuestView;
+        const lite = this.isGuestLite();
 
         this.camera.zoom += (this.camera.targetZoom - this.camera.zoom) * 0.1;
         this.clampCamera();
 
-        if (guestLite) {
-            // Cosmetic advance only — gunfights come from host fx_burst (saves guest CPU)
+        if (isGuest) {
+            // Authority stays with host — guests never run full sim
             this.combatVisualOnly = true;
             this.updateGuestCosmeticMovement(dtSec);
-            this._enforceGuestFxCaps();
+            if (lite) this._enforceGuestFxCaps();
         } else {
             this.combatVisualOnly = false;
             this.updateFallenBodies(dtSec);
@@ -1158,7 +1206,7 @@ class BattlefieldRenderer {
         this.updateAndDrawTracers(ctx, dtSec);
         this.updateAndDrawOrdnance(ctx, deltaTime);
         this.updateAndDrawParticles(ctx, deltaTime);
-        if (!guestLite) {
+        if (!lite) {
             this.updateAndDrawPlanes(ctx, deltaTime);
             this.drawWeather(ctx, deltaTime);
         }
@@ -1166,16 +1214,15 @@ class BattlefieldRenderer {
         this.drawCaptureUI(ctx);
 
         ctx.restore();
-        // Minimap is cheap but guest devices still benefit from half-rate
         this._guestFrame = (this._guestFrame || 0) + 1;
-        if (!guestLite || (this._guestFrame % 2) === 0) {
+        if (!lite || (this._guestFrame % 2) === 0) {
             this.drawMinimap();
         }
     }
 
     /** Hard caps so guest GPUs don't drown in craters/tracers/particles. */
     _enforceGuestFxCaps() {
-        if (!this.mpGuestView) return;
+        if (!this.isGuestLite()) return;
         const trim = (arr, max) => {
             if (arr && arr.length > max) arr.splice(0, arr.length - max);
         };
@@ -1940,7 +1987,7 @@ class BattlefieldRenderer {
     }
 
     spawnBloodPuff(x, y) {
-        const n = this.mpGuestView ? 2 : 6;
+        const n = this.isGuestLite() ? 2 : 6;
         for (let i = 0; i < n; i++) {
             this.particles.push({
                 x: x, y: y,
@@ -1949,10 +1996,10 @@ class BattlefieldRenderer {
                 radius: 2 + Math.random() * 3,
                 color: 'rgba(160, 20, 20, ',
                 opacity: 0.9,
-                decay: this.mpGuestView ? 0.08 : 0.04
+                decay: this.isGuestLite() ? 0.08 : 0.04
             });
         }
-        if (this.mpGuestView) this._enforceGuestFxCaps();
+        if (this.isGuestLite()) this._enforceGuestFxCaps();
     }
 
     drawGround(ctx) {
@@ -1965,7 +2012,7 @@ class BattlefieldRenderer {
         ctx.fillRect(this.ententeTrenchX + 20, 0, this.centralTrenchX - this.ententeTrenchX - 40, this.worldHeight);
 
         // Shell-scarred texture — skip on guests (36 ellipses/frame is costly)
-        if (this.mpGuestView) return;
+        if (this.isGuestLite()) return;
         ctx.fillStyle = 'rgba(12, 9, 6, 0.4)';
         for (let i = 0; i < 36; i++) {
             ctx.beginPath();
@@ -2008,7 +2055,7 @@ class BattlefieldRenderer {
     }
 
     drawTrenches(ctx) {
-        if (this.mpGuestView) {
+        if (this.isGuestLite()) {
             this._drawTrenchesLite(ctx);
             return;
         }
@@ -2268,7 +2315,7 @@ class BattlefieldRenderer {
         });
     }
     drawTerrainObstacles(ctx) {
-        const craters = this.mpGuestView && this.craters.length > 18
+        const craters = this.isGuestLite() && this.craters.length > 18
             ? this.craters.slice(-18)
             : this.craters;
         craters.forEach(crater => {
@@ -2283,7 +2330,7 @@ class BattlefieldRenderer {
             ctx.fill();
 
             // Guest lite: skip water highlight (1 less path per crater)
-            if (!this.mpGuestView) {
+            if (!this.isGuestLite()) {
                 ctx.fillStyle = crater.waterColor;
                 ctx.beginPath();
                 ctx.arc(crater.x + 2, crater.y + 2, crater.radius * 0.65, 0, Math.PI * 2);
@@ -2293,7 +2340,7 @@ class BattlefieldRenderer {
 
         ctx.strokeStyle = '#8c8275';
         ctx.lineWidth = 1.5;
-        const wires = this.mpGuestView && this.barbedWire.length > 40
+        const wires = this.isGuestLite() && this.barbedWire.length > 40
             ? this.barbedWire.filter((_, i) => i % 2 === 0)
             : this.barbedWire;
         wires.forEach(w => {
@@ -2418,7 +2465,7 @@ class BattlefieldRenderer {
     }
 
     drawDeadBodies(ctx) {
-        const bodies = this.mpGuestView && this.deadBodies.length > 20
+        const bodies = this.isGuestLite() && this.deadBodies.length > 20
             ? this.deadBodies.slice(-20)
             : this.deadBodies;
         bodies.forEach(b => {
@@ -2582,12 +2629,12 @@ class BattlefieldRenderer {
     }
 
     updateAndDrawTracers(ctx, dt) {
-        if (this.mpGuestView && this.tracers.length > 28) {
+        if (this.isGuestLite() && this.tracers.length > 28) {
             this.tracers.splice(0, this.tracers.length - 28);
         }
         for (let i = this.tracers.length - 1; i >= 0; i--) {
             const t = this.tracers[i];
-            t.life -= this.mpGuestView ? dt * 1.4 : dt;
+            t.life -= this.isGuestLite() ? dt * 1.4 : dt;
             if (t.life <= 0) {
                 this.tracers.splice(i, 1);
                 continue;
@@ -2638,7 +2685,7 @@ class BattlefieldRenderer {
 
     createExplosion(x, y, type = 'he') {
         const isGrenade = type === 'grenade';
-        const guestLite = !!this.mpGuestView;
+        const guestLite = this.isGuestLite();
         this.craters.push({
             x: x, y: y,
             radius: type === 'he' ? 22 : (isGrenade ? 12 : 14),
@@ -2724,7 +2771,7 @@ class BattlefieldRenderer {
     }
 
     drawWeather(ctx, deltaTime) {
-        if (this.mpGuestView) return; // fog clouds are a guest-device killer
+        if (this.isGuestLite()) return; // fog clouds are a lite-mode killer
         if (this.weather.type === 'fog') {
             this.weather.fogParticles.forEach(f => {
                 f.x += f.vx;
