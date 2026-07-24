@@ -118,6 +118,10 @@ class GameEngine {
         if (this.renderer) {
             this.renderer.playerFaction = faction;
             this.renderer.playerCountry = country;
+            if (!this.mpSession || !this.mpSession.active) {
+                this.renderer.mpGuestView = false;
+                this.renderer.mpRoster = null;
+            }
             this.renderer.reloadBattlefield();
             this.renderer.setPlayerFaction(faction, country);
         }
@@ -315,11 +319,17 @@ class GameEngine {
                 this.update(deltaTime);
                 if (this.isMpHost()) {
                     this._snapTimer += deltaTime;
-                    if (this._snapTimer >= 0.1) {
+                    this._bodySnapTimer = (this._bodySnapTimer || 0) + deltaTime;
+                    // 20 Hz snapshots; skip if socket congested
+                    if (this._snapTimer >= 0.05) {
                         this._snapTimer = 0;
-                        this.broadcastMpSnapshot();
+                        const includeBodies = this._bodySnapTimer >= 0.5;
+                        if (includeBodies) this._bodySnapTimer = 0;
+                        this.broadcastMpSnapshot({ includeBodies });
                     }
                 }
+            } else {
+                this.flushMpSnapshot();
             }
             this.renderer.render(deltaTime * 1000);
         }
@@ -665,13 +675,24 @@ class GameEngine {
         return { success: true };
     }
 
-    broadcastMpSnapshot() {
+    broadcastMpSnapshot(opts = {}) {
         if (!this.isMpHost() || !this.mpClient || !this.renderer) return;
-        this.mpClient.sendSnapshot(this.renderer.buildSnapshot());
+        if (typeof this.mpClient.canSendHeavy === 'function' && !this.mpClient.canSendHeavy()) {
+            return; // socket buffer backed up — drop this tick
+        }
+        this.mpClient.sendSnapshot(this.renderer.buildSnapshot(opts));
     }
 
     applyMpSnapshot(snap) {
         if (!this.isMpGuest() || !this.renderer) return;
+        // Coalesce: only keep latest until next frame
+        this._pendingMpSnap = snap;
+    }
+
+    flushMpSnapshot() {
+        if (!this._pendingMpSnap || !this.renderer) return;
+        const snap = this._pendingMpSnap;
+        this._pendingMpSnap = null;
         this.renderer.applySnapshot(snap);
     }
 

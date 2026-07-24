@@ -120,6 +120,9 @@ class BattlefieldRenderer {
 
         // Multiplayer seat list: [{ id, country, faction }, ...] — null/empty = solo
         this.mpRoster = null;
+        /** Guest clients: skip local combat/CP sim; host snapshots are authority. */
+        this.mpGuestView = false;
+        this._mpDeadBodyAcc = 0;
 
         // 3 Neutral Capture Points across No Man's Land
         this.capturePoints = [
@@ -702,87 +705,181 @@ class BattlefieldRenderer {
         this.units.push(spec);
     }
 
-    buildSnapshot() {
-        return {
+    buildSnapshot(opts = {}) {
+        const includeBodies = !!opts.includeBodies;
+        const snap = {
             t: Date.now(),
             units: this.units.map(u => ({
                 id: u.id,
-                faction: u.faction,
-                ownerId: u.ownerId,
-                country: u.country,
-                type: u.type,
-                x: u.x,
-                y: u.y,
-                targetX: u.targetX,
-                targetY: u.targetY,
-                state: u.state,
-                holdLine: u.holdLine,
-                chargeHoldLine: u.chargeHoldLine,
-                chargeTargetX: u.chargeTargetX,
-                hp: u.hp,
-                maxHp: u.maxHp,
-                grenades: u.grenades || 0,
-                inCover: !!u.inCover,
-                isAiming: !!u.isAiming
+                f: u.faction === 'entente' ? 0 : 1,
+                o: u.ownerId,
+                c: u.country,
+                ty: u.type,
+                x: Math.round(u.x),
+                y: Math.round(u.y),
+                s: u.state,
+                hl: u.holdLine,
+                ch: u.chargeHoldLine || undefined,
+                cx: u.chargeTargetX != null ? Math.round(u.chargeTargetX) : undefined,
+                hp: Math.round(u.hp),
+                mh: Math.round(u.maxHp)
             })),
-            capturePoints: this.capturePoints.map(c => ({
-                x: c.x,
-                owner: c.owner,
-                progress: c.progress,
-                label: c.label
+            cps: this.capturePoints.map(c => ({
+                o: c.owner,
+                p: Math.round((c.progress || 0) * 100) / 100
             })),
             structures: this.structures.map(s => ({
                 id: s.id,
-                type: s.type,
-                faction: s.faction,
-                x: s.x,
-                y: s.y,
-                constructed: s.constructed,
-                progress: s.progress,
+                ty: s.type,
+                f: s.faction === 'entente' ? 0 : 1,
+                x: Math.round(s.x),
+                y: Math.round(s.y),
+                constructed: !!s.constructed,
+                progress: s.progress || 0,
                 occupiedBy: s.occupiedBy || null,
                 heat: s.heat || 0,
-                isOverheated: !!s.isOverheated
-            })),
-            deadBodies: this.deadBodies.map(b => ({
-                id: b.id,
-                x: b.x,
-                y: b.y,
-                faction: b.faction,
-                country: b.country,
-                angle: b.angle,
-                deathTimer: b.deathTimer
+                oh: !!s.isOverheated
             }))
         };
+        if (includeBodies) {
+            snap.bodies = this.deadBodies.slice(0, 40).map(b => ({
+                id: b.id,
+                x: Math.round(b.x),
+                y: Math.round(b.y),
+                f: b.faction === 'entente' ? 0 : 1,
+                c: b.country,
+                a: b.angle,
+                d: Math.round(b.deathTimer)
+            }));
+        }
+        return snap;
     }
 
     applySnapshot(snap) {
-        if (!snap) return;
-        this.units = (snap.units || []).map(u => ({
-            ...u,
-            shootCooldown: u.shootCooldown || 0,
-            aimTimer: 0,
-            currentTarget: null,
-            assignedBuildId: null,
-            assignedTargetId: null,
-            reviveTimer: 0,
-            grenadeCooldown: 0,
-            speed: u.type === 'engineer' ? 1.1 : (u.type === 'machinegunner' ? 0.8 : (u.type === 'officer' ? 1.05 : (u.type === 'medic' ? 1.15 : (u.type === 'skirmisher' ? 1.05 : 0.95)))),
-            range: u.type === 'machinegunner' ? 550 : (u.type === 'skirmisher' ? 180 : (u.type === 'engineer' || u.type === 'artilleryman' || u.type === 'officer' ? 260 : 450))
-        }));
-        if (snap.capturePoints && snap.capturePoints.length === this.capturePoints.length) {
+        if (!snap || !snap.units) return;
+        if (snap.t && this._lastSnapT && snap.t < this._lastSnapT) return; // stale
+        this._lastSnapT = snap.t || Date.now();
+
+        const factionOf = (f) => (f === 0 || f === 'entente') ? 'entente' : 'central';
+        const byId = new Map(this.units.map(u => [u.id, u]));
+        const next = [];
+
+        for (const u of snap.units) {
+            const faction = factionOf(u.f != null ? u.f : u.faction);
+            const type = u.ty || u.type;
+            const existing = byId.get(u.id);
+            const x = u.x;
+            const y = u.y;
+            const state = u.s || u.state;
+            const holdLine = u.hl != null ? u.hl : u.holdLine;
+            const chargeHoldLine = u.ch != null ? u.ch : u.chargeHoldLine;
+            const chargeTargetX = u.cx != null ? u.cx : u.chargeTargetX;
+            const hp = u.hp;
+            const maxHp = u.mh != null ? u.mh : (u.maxHp || 100);
+            const ownerId = u.o || u.ownerId;
+            const country = u.c || u.country;
+
+            if (existing) {
+                // Soft follow host position (reduces teleport stutter)
+                const dx = x - existing.x;
+                const dy = y - existing.y;
+                if (Math.hypot(dx, dy) > 80) {
+                    existing.x = x;
+                    existing.y = y;
+                } else {
+                    existing.x += dx * 0.55;
+                    existing.y += dy * 0.55;
+                }
+                existing.faction = faction;
+                existing.ownerId = ownerId;
+                existing.country = country;
+                existing.type = type;
+                existing.state = state;
+                existing.holdLine = holdLine;
+                existing.chargeHoldLine = chargeHoldLine || null;
+                existing.chargeTargetX = chargeTargetX;
+                existing.hp = hp;
+                existing.maxHp = maxHp;
+                next.push(existing);
+                byId.delete(u.id);
+            } else {
+                next.push({
+                    id: u.id,
+                    faction,
+                    ownerId,
+                    country,
+                    type,
+                    x, y,
+                    targetX: x,
+                    targetY: y,
+                    state,
+                    holdLine,
+                    chargeHoldLine: chargeHoldLine || null,
+                    chargeTargetX,
+                    hp,
+                    maxHp,
+                    grenades: type === 'skirmisher' ? 3 : 0,
+                    grenadeCooldown: 0,
+                    shootCooldown: 0,
+                    aimTimer: 0,
+                    isAiming: false,
+                    currentTarget: null,
+                    assignedBuildId: null,
+                    assignedTargetId: null,
+                    reviveTimer: 0,
+                    inCover: state === 'garrison' || state === 'reserve',
+                    speed: type === 'engineer' ? 1.1 : (type === 'machinegunner' ? 0.8 : (type === 'officer' ? 1.05 : (type === 'medic' ? 1.15 : (type === 'skirmisher' ? 1.05 : 0.95)))),
+                    range: type === 'machinegunner' ? 550 : (type === 'skirmisher' ? 180 : (type === 'engineer' || type === 'artilleryman' || type === 'officer' ? 260 : 450))
+                });
+            }
+        }
+        this.units = next;
+
+        if (snap.cps && snap.cps.length === this.capturePoints.length) {
+            snap.cps.forEach((c, i) => {
+                this.capturePoints[i].owner = c.o === undefined ? c.owner : c.o;
+                this.capturePoints[i].progress = c.p != null ? c.p : c.progress;
+            });
+        } else if (snap.capturePoints && snap.capturePoints.length === this.capturePoints.length) {
             snap.capturePoints.forEach((c, i) => {
                 this.capturePoints[i].owner = c.owner;
                 this.capturePoints[i].progress = c.progress;
             });
         }
-        this.structures = (snap.structures || []).map(s => ({
-            ...s,
-            overheatTimer: 0
-        }));
-        this.deadBodies = (snap.deadBodies || []).map(b => ({
-            ...b,
-            assignedMedicId: null
-        }));
+
+        if (snap.structures) {
+            this.structures = snap.structures.map(s => ({
+                id: s.id,
+                type: s.ty || s.type,
+                faction: factionOf(s.f != null ? s.f : s.faction),
+                x: s.x,
+                y: s.y,
+                constructed: !!s.constructed,
+                progress: s.progress || 0,
+                occupiedBy: s.occupiedBy || null,
+                heat: s.heat || 0,
+                isOverheated: !!(s.oh != null ? s.oh : s.isOverheated),
+                overheatTimer: 0
+            }));
+        }
+
+        if (snap.bodies) {
+            this.deadBodies = snap.bodies.map(b => ({
+                id: b.id,
+                x: b.x,
+                y: b.y,
+                faction: factionOf(b.f != null ? b.f : b.faction),
+                country: b.c || b.country,
+                angle: b.a != null ? b.a : b.angle,
+                deathTimer: b.d != null ? b.d : b.deathTimer,
+                assignedMedicId: null
+            }));
+        } else if (snap.deadBodies) {
+            this.deadBodies = snap.deadBodies.map(b => ({
+                ...b,
+                assignedMedicId: null
+            }));
+        }
     }
 
     initWeather() {
@@ -918,13 +1015,18 @@ class BattlefieldRenderer {
         this.camera.zoom += (this.camera.targetZoom - this.camera.zoom) * 0.1;
         this.clampCamera();
 
-        this.updateFallenBodies(dtSec);
-        this.updateMedicBehavior(dtSec);
-        this.updateOfficerBehavior(dtSec);
-        this.updateSoldierCombat(dtSec);
-        this.updateSoldierMovement(dtSec);
-        this.updateStructures(dtSec);
-        this.updateCapturePoints(dtSec);
+        if (this.mpGuestView) {
+            // Presentation only — do NOT run combat/capture (that was causing huge MP lag)
+            this.updateSoldierMovement(dtSec);
+        } else {
+            this.updateFallenBodies(dtSec);
+            this.updateMedicBehavior(dtSec);
+            this.updateOfficerBehavior(dtSec);
+            this.updateSoldierCombat(dtSec);
+            this.updateSoldierMovement(dtSec);
+            this.updateStructures(dtSec);
+            this.updateCapturePoints(dtSec);
+        }
 
         const ctx = this.ctx;
         ctx.save();

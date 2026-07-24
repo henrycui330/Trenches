@@ -879,6 +879,7 @@ class UIController {
 
             if (this.engine.renderer) {
                 this.engine.renderer.mpRoster = roster;
+                this.engine.renderer.mpGuestView = !isHost;
             }
 
             this.mp.onSnapshot = (snap) => this.engine.applyMpSnapshot(snap);

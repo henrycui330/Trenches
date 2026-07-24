@@ -169,6 +169,12 @@ class MpClient {
         this.send({ type: 'snapshot', snap });
     }
 
+    /** False when the outbound buffer is congested (drop heavy snaps). */
+    canSendHeavy() {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+        return this.ws.bufferedAmount < 256 * 1024;
+    }
+
     sendCmd(cmd) {
         this.send({ type: 'cmd', cmd });
     }
