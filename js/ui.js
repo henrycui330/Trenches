@@ -250,29 +250,6 @@ class UIController {
             });
         }
 
-        const buildMGBtn = document.getElementById('btn-build-mg-nest');
-        if (buildMGBtn) {
-            buildMGBtn.addEventListener('click', () => {
-                if (!this.engine || !this.engine.renderer) return;
-
-                if (this.engine.state.commandPoints < 20) {
-                    if (this.engine) this.engine.notifyTelegraph("INSUFFICIENT CP: Machine Gun Nest requires 20 CP!", true);
-                    return;
-                }
-
-                if (this.engine.state.engineerCount <= 0) {
-                    if (this.engine) this.engine.notifyTelegraph("NO ENGINEERS: You need at least 1 available Engineer in Reserve!", true);
-                    return;
-                }
-
-                this.engine.state.commandPoints -= 20;
-                this.engine.renderer.enableBuildMode('mg_nest');
-                this.hideBuildPanel();
-
-                this.triggerBannerNotification('build_mg');
-            });
-        }
-
         const buildArtilleryBtn = document.getElementById('btn-build-artillery');
         if (buildArtilleryBtn) {
             buildArtilleryBtn.addEventListener('click', () => {

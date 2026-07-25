@@ -2766,15 +2766,29 @@ class BattlefieldRenderer {
                 ctx.fill();
             }
 
-            // Weapon overlay — pistol for specialists, shotgun for skirmisher, rifle for riflemen/medics
+            // Weapon overlay — pistol for specialists, mobile HMG for machine gunners, shotgun for skirmishers, rifle for riflemen/medics
             const isFlipped = sprite.weaponFlip;
-            if (unit.type === 'engineer' || unit.type === 'artilleryman' || unit.type === 'officer' || (unit.type === 'machinegunner' && unit.state !== 'manning_mg')) {
+            if (unit.type === 'engineer' || unit.type === 'artilleryman' || unit.type === 'officer') {
                 if (this.pistolImgLoaded && unit.state !== 'manning_artillery') {
                     ctx.save();
                     if (isFlipped) ctx.scale(-1, 1);
                     ctx.translate(4, 8);
                     ctx.rotate(isSprinting ? (0.25 + Math.sin(unit.sprintPhase) * 0.05) : 0);
                     ctx.drawImage(this.pistolImg, 0, -4, 18, 12);
+                    ctx.restore();
+                }
+            } else if (unit.type === 'machinegunner') {
+                const isAllied = unit.faction === 'entente';
+                const mgImg = isAllied ? this.alliedMgImg : this.axisMgImg;
+                const mgLoaded = isAllied ? this.alliedMgImgLoaded : this.axisMgImgLoaded;
+                if (mgLoaded) {
+                    ctx.save();
+                    if (isFlipped) ctx.scale(-1, 1);
+                    ctx.translate(5, 8);
+                    ctx.rotate(isSprinting ? rifleSprintDip : (unit.isAiming ? -0.05 : 0.08));
+                    const mgW = isAllied ? 36 : 32;
+                    const mgH = isAllied ? 16 : 22;
+                    ctx.drawImage(mgImg, 0, -mgH / 2, mgW, mgH);
                     ctx.restore();
                 }
             } else if (unit.type === 'skirmisher') {
