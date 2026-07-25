@@ -2645,7 +2645,7 @@ class BattlefieldRenderer {
             germany: { img: this.germanyImg,  loaded: this.germanyImgLoaded,  w: 84, h: 52, ox: -42, oy: -26, flip: true,  weaponFlip: true  },
             austria: { img: this.austriaImg,  loaded: this.austriaImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: false, weaponFlip: true  },
             ottoman: { img: this.ottomanImg,  loaded: this.ottomanImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: true,  weaponFlip: true  },
-            soviet:  { img: this.sovietImg,   loaded: this.sovietImgLoaded,   w: 34, h: 30, ox: -17, oy: -15, flip: false, weaponFlip: false }
+            soviet:  { img: this.sovietImg,   loaded: this.sovietImgLoaded,   w: 30, h: 26, ox: -15, oy: -13, flip: true,  weaponFlip: false }
         };
         return map[country] || map['uk'];
     }
@@ -2806,9 +2806,6 @@ class BattlefieldRenderer {
                     if (isFlipped) ctx.scale(-1, 1);
                     ctx.translate(5, 8);
                     ctx.rotate(isSprinting ? rifleSprintDip : (unit.isAiming ? -0.05 : 0.08));
-                    if (isSoviet) {
-                        ctx.scale(-1, 1); // Flip PKM horizontally as requested!
-                    }
                     const mgW = isSoviet ? 38 : (isAllied ? 36 : 32);
                     const mgH = isSoviet ? 18 : (isAllied ? 16 : 22);
                     ctx.drawImage(mgImg, 0, -mgH / 2, mgW, mgH);
