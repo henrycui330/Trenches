@@ -2663,23 +2663,26 @@ class BattlefieldRenderer {
 
     drawUnits(ctx, deltaTime) {
         this.units.forEach(unit => {
-            ctx.save();
-            ctx.translate(unit.x, unit.y);
-
-            // Sprinting Detection & Phase Update
+            // Sprinting Detection & Smooth Stride Cadence
             const isSprinting = unit.state === 'charging' || unit.state === 'retreating' || unit.isSprinting;
             if (isSprinting) {
-                unit.sprintPhase = (unit.sprintPhase || 0) + (deltaTime || 0.016) * 16.0;
+                unit.sprintPhase = (unit.sprintPhase || 0) + (deltaTime || 0.016) * 7.5;
             } else {
                 unit.sprintPhase = 0;
             }
 
-            const bodySway = isSprinting ? Math.sin(unit.sprintPhase) * 0.22 : 0;
-            const rifleSprintDip = isSprinting ? (0.45 + Math.sin(unit.sprintPhase) * 0.08) : 0;
+            // Smooth athletic sprint: forward torso lean, weight sway, and vertical footstep bob
+            const forwardLean = unit.faction === 'entente' ? 0.12 : -0.12;
+            const bodySway = isSprinting ? (forwardLean + Math.sin(unit.sprintPhase) * 0.10) : 0;
+            const verticalBob = isSprinting ? Math.abs(Math.sin(unit.sprintPhase)) * -3.5 : 0;
+            const rifleSprintDip = isSprinting ? (0.32 + Math.sin(unit.sprintPhase) * 0.05) : 0;
+
+            ctx.save();
+            ctx.translate(unit.x, unit.y + verticalBob);
 
             ctx.fillStyle = 'rgba(0,0,0,0.4)';
             ctx.beginPath();
-            ctx.ellipse(0, 10, 12, 5, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 10 - verticalBob, 12, 5, 0, 0, Math.PI * 2);
             ctx.fill();
 
             if (unit.isAiming) {
@@ -2723,7 +2726,7 @@ class BattlefieldRenderer {
 
             if (sprite.loaded) {
                 ctx.save();
-                if (isSprinting) ctx.rotate(bodySway); // Front-back torso sway!
+                if (isSprinting) ctx.rotate(bodySway); // Smooth forward lean & weight sway!
                 if (sprite.flip) {
                     ctx.save();
                     ctx.scale(-1, 1);
@@ -2749,7 +2752,7 @@ class BattlefieldRenderer {
                     ctx.save();
                     if (isFlipped) ctx.scale(-1, 1);
                     ctx.translate(4, 8);
-                    ctx.rotate(isSprinting ? (0.35 + Math.sin(unit.sprintPhase) * 0.1) : 0);
+                    ctx.rotate(isSprinting ? (0.25 + Math.sin(unit.sprintPhase) * 0.05) : 0);
                     ctx.drawImage(this.pistolImg, 0, -4, 18, 12);
                     ctx.restore();
                 }
@@ -2787,9 +2790,9 @@ class BattlefieldRenderer {
                 if (isFlipped) ctx.scale(-1, 1);
                 ctx.translate(6, 10);
                 if (isSprinting) {
-                    ctx.rotate(rifleSprintDip); // Rifle dips down into low trail carry!
+                    ctx.rotate(rifleSprintDip); // Low trail carry angle!
                 } else {
-                    ctx.rotate(unit.isAiming ? -0.1 : 0.08); // Restores ready position when not sprinting!
+                    ctx.rotate(unit.isAiming ? -0.1 : 0.08); // Level ready stance!
                 }
                 ctx.drawImage(this.weaponImg, 0, -5, 32, 10);
                 ctx.restore();
