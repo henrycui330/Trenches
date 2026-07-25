@@ -2044,6 +2044,13 @@ class BattlefieldRenderer {
         u.inCover = true;
     }
 
+    _getTeamTitle(faction) {
+        if (this.playerCountry === 'soviet') {
+            return faction === 'central' ? 'RED ARMY' : 'GERMAN ARMED FORCES';
+        }
+        return faction === 'entente' ? 'ALLIED FORCES' : 'GERMAN ARMED FORCES';
+    }
+
     orderCharge(faction) {
         const chain = this._getAssaultChain(faction);
         const snapshot = this._snapshotAssaultGarrisons(faction);
@@ -2075,7 +2082,7 @@ class BattlefieldRenderer {
             window.AudioEngine.playWhistle();
         }
 
-        const teamName = faction === 'entente' ? 'ENTENTE EXPEDITIONARY' : 'CENTRAL POWERS';
+        const teamName = this._getTeamTitle(faction);
         const tip = hopSummaries[hopSummaries.length - 1] || 'FORWARD';
         if (window.UIController) {
             window.UIController.triggerCustomBanner(
@@ -2115,7 +2122,7 @@ class BattlefieldRenderer {
             window.AudioEngine.playWhistle();
         }
 
-        const teamName = faction === 'entente' ? 'ENTENTE EXPEDITIONARY' : 'CENTRAL POWERS';
+        const teamName = this._getTeamTitle(faction);
         const pctLabel = destinations.length === 1 ? '100%' : (destinations.length === 2 ? '50%/50%' : '~33% each');
         if (window.UIController) {
             window.UIController.triggerCustomBanner(
@@ -2641,7 +2648,7 @@ class BattlefieldRenderer {
             germany: { img: this.germanyImg,  loaded: this.germanyImgLoaded,  w: 84, h: 52, ox: -42, oy: -26, flip: true,  weaponFlip: true  },
             austria: { img: this.austriaImg,  loaded: this.austriaImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: false, weaponFlip: true  },
             ottoman: { img: this.ottomanImg,  loaded: this.ottomanImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: true,  weaponFlip: true  },
-            soviet:  { img: this.sovietImg,   loaded: this.sovietImgLoaded,   w: 38, h: 38, ox: -19, oy: -19, flip: false, weaponFlip: false }
+            soviet:  { img: this.sovietImg,   loaded: this.sovietImgLoaded,   w: 34, h: 30, ox: -17, oy: -15, flip: true,  weaponFlip: true  }
         };
         return map[country] || map['uk'];
     }
