@@ -687,6 +687,11 @@ class UIController {
 
                 if (label) label.innerText = cp.label || (isKoth ? 'HILL-100' : `C-${i + 1}`);
 
+                const inRange = this.engine.renderer.units.filter(u =>
+                    u.hp > 0 && (u.type === 'rifleman' || u.type === 'skirmisher') && Math.abs(u.x - cp.x) < 45
+                );
+                const hasEntente = inRange.some(u => u.faction === 'entente');
+                const hasCentral = inRange.some(u => u.faction === 'central');
                 const contested  = hasEntente && hasCentral;
 
                 dot.innerText = cp.owner === 'entente' ? '🔵' : cp.owner === 'central' ? '🔴' : '⚪';
