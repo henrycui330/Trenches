@@ -418,7 +418,82 @@ class BattlefieldRenderer {
         return faction === this.playerFaction ? this._getLocalPlayerId() : 'ai';
     }
 
-    createSoldier(faction, x, y, type = 'rifleman', state = 'garrison', ownerId = null, country = null) {
+    _getMaxSquadSize(type) {
+        if (type === 'machinegunner') return 5;
+        if (type === 'engineer') return 5;
+        if (type === 'medic') return 5;
+        return 10; // Standard 10-man Rifle / Skirmisher / General Infantry squad
+    }
+
+    _getSquadPrefix(type) {
+        if (type === 'machinegunner') return 'MG Squad';
+        if (type === 'engineer') return 'Eng Squad';
+        if (type === 'medic') return 'Med Squad';
+        return 'Alpha Squad';
+    }
+
+    assignUnitToSquad(unit) {
+        if (unit.squadId) return unit.squadId;
+        const maxMembers = this._getMaxSquadSize(unit.type);
+        const prefix = this._getSquadPrefix(unit.type);
+
+        const existingSquads = {};
+        for (let i = 0; i < this.units.length; i++) {
+            const u = this.units[i];
+            if (u.faction === unit.faction && u.ownerId === unit.ownerId && u.squadId && u.hp > 0) {
+                const uPrefix = this._getSquadPrefix(u.type);
+                if (uPrefix === prefix) {
+                    existingSquads[u.squadId] = (existingSquads[u.squadId] || 0) + 1;
+                }
+            }
+        }
+
+        for (const [sqId, count] of Object.entries(existingSquads)) {
+            if (count < maxMembers) {
+                unit.squadId = sqId;
+                return sqId;
+            }
+        }
+
+        const sqNumber = Object.keys(existingSquads).length + 1;
+        unit.squadId = `${prefix} ${sqNumber}`;
+        return unit.squadId;
+    }
+
+    getSquadsForOwner(ownerId) {
+        const squadMap = {};
+        for (let i = 0; i < this.units.length; i++) {
+            const u = this.units[i];
+            if (u.ownerId === ownerId && u.hp > 0 && u.squadId) {
+                if (!squadMap[u.squadId]) {
+                    squadMap[u.squadId] = {
+                        id: u.squadId,
+                        type: u.type,
+                        members: [],
+                        faction: u.faction
+                    };
+                }
+                squadMap[u.squadId].members.push(u);
+            }
+        }
+        return Object.values(squadMap);
+    }
+
+    commandSquadMove(squadId, targetX, targetY) {
+        const members = this.units.filter(u => u.squadId === squadId && u.hp > 0);
+        if (members.length === 0) return;
+
+        members.forEach((u, idx) => {
+            const offsetX = (idx % 3 - 1) * 22;
+            const offsetY = (Math.floor(idx / 3) - 1) * 24;
+            u.targetX = targetX + offsetX;
+            u.targetY = targetY + offsetY;
+            u.state = 'charging';
+            u.isSprinting = true;
+        });
+    }
+
+    createSoldier(faction, x, y, type = 'rifleman', state = 'garrison', ownerId = null, country = null, squadId = null) {
         const resolvedOwnerId = this._resolveOwnerId(faction, ownerId);
         const resolvedCountry = country || this._countryForOwner(resolvedOwnerId, faction);
         const unlocks = this._getUnlocksForOwner(resolvedOwnerId);
@@ -434,18 +509,18 @@ class BattlefieldRenderer {
         const baseHp = (type === 'rifleman' && unlocks.rifleTier3) ? 115 : 100;
         const isFrontline = type === 'rifleman' || type === 'skirmisher';
 
-        return {
+        const soldier = {
             id: Math.random().toString(36).substr(2, 9),
             faction: faction,
             ownerId: resolvedOwnerId,
             country: resolvedCountry,
             type: type,
+            squadId: squadId,
             x: x,
             y: y,
             targetX: x,
             targetY: y,
             state: state,
-            // Frontline infantry hold a trench line: main front, Charlie CP, or enemy trench
             holdLine: isFrontline ? 'main' : null,
             chargeHoldLine: null,
             chargeTargetX: undefined,
@@ -463,6 +538,9 @@ class BattlefieldRenderer {
             aimTimer: 0,
             inCover: state === 'garrison' || state === 'reserve'
         };
+
+        this.assignUnitToSquad(soldier);
+        return soldier;
     }
 
     // Build zigzag trench path arrays (called once at init)
@@ -1232,6 +1310,15 @@ class BattlefieldRenderer {
                 
                 this.buildMode.active = false;
                 this.canvas.style.cursor = 'crosshair';
+            } else if (this.selectedSquadId) {
+                const rect = this.canvas.getBoundingClientRect();
+                const worldX = (e.clientX - rect.left) / this.camera.zoom + this.camera.x;
+                const worldY = (e.clientY - rect.top) / this.camera.zoom + this.camera.y;
+
+                this.commandSquadMove(this.selectedSquadId, worldX, worldY);
+                if (window.gameEngineInstance && window.gameEngineInstance.notifyTelegraph) {
+                    window.gameEngineInstance.notifyTelegraph(`[SQUAD ORDER] ${this.selectedSquadId} advancing to target location!`);
+                }
             }
         });
     }
@@ -2705,6 +2792,14 @@ class BattlefieldRenderer {
             ctx.beginPath();
             ctx.ellipse(0, 10 - verticalBob, 12, 5, 0, 0, Math.PI * 2);
             ctx.fill();
+
+            if (this.selectedSquadId && unit.squadId === this.selectedSquadId) {
+                ctx.strokeStyle = 'rgba(245, 158, 11, 0.95)';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(0, 0, 16, 0, Math.PI * 2);
+                ctx.stroke();
+            }
 
             if (unit.isAiming) {
                 ctx.strokeStyle = 'rgba(255, 200, 50, 0.8)';

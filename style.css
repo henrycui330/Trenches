@@ -1766,3 +1766,84 @@ html, body {
     border-radius: 4px;
     cursor: pointer;
 }
+
+/* SQUAD MANAGEMENT HUD BAR */
+.squad-bar-overlay {
+    position: absolute;
+    top: 64px;
+    left: 14px;
+    z-index: 45;
+    background: rgba(14, 11, 8, 0.88);
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    border-radius: 4px;
+    padding: 8px 12px;
+    max-width: 580px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+
+.squad-bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #d4af37;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+}
+
+.squad-hint-text {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.70rem;
+    color: #a3b18a;
+    font-weight: 400;
+}
+
+.squad-cards-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 110px;
+    overflow-y: auto;
+}
+
+.squad-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(30, 25, 20, 0.9);
+    border: 1px solid #4a3d2c;
+    border-radius: 3px;
+    padding: 4px 8px;
+    color: #e2d9cc;
+    font-family: 'Special Elite', monospace;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.squad-chip:hover {
+    border-color: #d4af37;
+    background: rgba(45, 38, 30, 0.95);
+}
+
+.squad-chip.selected {
+    border-color: #f59e0b;
+    background: rgba(180, 83, 9, 0.4);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+    color: #fff;
+}
+
+.squad-chip-icon {
+    font-size: 0.85rem;
+}
+
+.squad-chip-count {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    color: #10b981;
+}

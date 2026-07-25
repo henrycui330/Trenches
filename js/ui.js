@@ -687,11 +687,6 @@ class UIController {
 
                 if (label) label.innerText = cp.label || (isKoth ? 'HILL-100' : `C-${i + 1}`);
 
-                const inRange = this.engine.renderer.units.filter(u =>
-                    u.hp > 0 && (u.type === 'rifleman' || u.type === 'skirmisher') && Math.abs(u.x - cp.x) < 45
-                );
-                const hasEntente = inRange.some(u => u.faction === 'entente');
-                const hasCentral = inRange.some(u => u.faction === 'central');
                 const contested  = hasEntente && hasCentral;
 
                 dot.innerText = cp.owner === 'entente' ? '🔵' : cp.owner === 'central' ? '🔴' : '⚪';
@@ -702,11 +697,7 @@ class UIController {
             });
         }
 
-        // Enable/Disable Order Buttons
-        document.querySelectorAll('.order-btn[data-cost]').forEach(btn => {
-            const cost = parseInt(btn.getAttribute('data-cost'), 10);
-            btn.disabled = cpVal < cost;
-        });
+        this.renderSquadHUD();
 
         // Enable/Disable Star Buttons
         document.querySelectorAll('.order-btn[data-cost-star]').forEach(btn => {
@@ -1148,6 +1139,47 @@ class UIController {
         }
 
         console.log('[MP] joint battle', { mode: room.mode, isHost, me, roster });
+    }
+
+    renderSquadHUD() {
+        const squadContainer = document.getElementById('squad-cards-container');
+        if (!squadContainer || !this.engine || !this.engine.renderer) return;
+
+        const myOwnerId = this.engine.renderer._getLocalPlayerId();
+        const squads = this.engine.renderer.getSquadsForOwner(myOwnerId);
+
+        if (squads.length === 0) {
+            squadContainer.innerHTML = `<span class="squad-hint-text">No active squads — deploy reinforcements!</span>`;
+            return;
+        }
+
+        let html = '';
+        squads.forEach(sq => {
+            const isSelected = this.engine.renderer.selectedSquadId === sq.id;
+            const icon = sq.type === 'machinegunner' ? '💣' : (sq.type === 'engineer' ? '🛠️' : (sq.type === 'medic' ? '➕' : '🪖'));
+            const maxCap = this.engine.renderer._getMaxSquadSize(sq.type);
+            html += `
+                <div class="squad-chip ${isSelected ? 'selected' : ''}" data-squad-id="${sq.id}">
+                    <span class="squad-chip-icon">${icon}</span>
+                    <span class="squad-chip-name">${sq.id}</span>
+                    <span class="squad-chip-count">${sq.members.length}/${maxCap}</span>
+                </div>
+            `;
+        });
+        squadContainer.innerHTML = html;
+
+        squadContainer.querySelectorAll('.squad-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const sqId = chip.getAttribute('data-squad-id');
+                if (this.engine.renderer.selectedSquadId === sqId) {
+                    this.engine.renderer.selectedSquadId = null;
+                } else {
+                    this.engine.renderer.selectedSquadId = sqId;
+                }
+                this.renderSquadHUD();
+            });
+        });
     }
 }
 
