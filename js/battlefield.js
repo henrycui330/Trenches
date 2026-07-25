@@ -392,7 +392,12 @@ class BattlefieldRenderer {
             const seat = this.mpRoster.find(p => p.id === ownerId);
             if (seat && seat.country) return seat.country;
         }
-        if (ownerId === 'ai') return faction === 'entente' ? 'uk' : 'germany';
+        if (ownerId === 'ai') {
+            if (this.playerFaction === 'central' && this.playerCountry === 'soviet') {
+                return 'germany'; // German Armed Forces facing Soviet Union on the Eastern Front
+            }
+            return faction === 'entente' ? 'uk' : 'germany';
+        }
         if (ownerId === this._getLocalPlayerId()) return this.playerCountry;
         return faction === this.playerFaction ? this.playerCountry : this._getEnemyCountry();
     }
