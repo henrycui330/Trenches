@@ -87,6 +87,7 @@ class UIController {
             credits: document.getElementById('modal-credits'),
             upgrades: document.getElementById('modal-upgrades'),
             faction: document.getElementById('modal-faction-select'),
+            matchSettings: document.getElementById('modal-match-settings'),
             countryball: document.getElementById('modal-countryball-viewer'),
             multiplayer: document.getElementById('modal-multiplayer')
         };
@@ -112,19 +113,96 @@ class UIController {
 
         this.setupMultiplayerUI();
 
-        // FACTION & COUNTRY CARDS SELECTION HANDLERS
+        // FACTION & COUNTRY CARDS SELECTION HANDLERS -> Transition to Match Settings
         document.querySelectorAll('.faction-card-btn[data-faction]').forEach(card => {
             card.addEventListener('click', () => {
-                const selectedFaction = card.getAttribute('data-faction');
-                const selectedCountry = card.getAttribute('data-country') || 'uk';
+                this.pendingFaction = card.getAttribute('data-faction');
+                this.pendingCountry = card.getAttribute('data-country') || 'uk';
+
+                const flags = { uk: '🇬🇧', canada: '🇨🇦', france: '🇫🇷', usa: '🇺🇸', germany: '🇩🇪', austria: '🇦🇹', ottoman: '🇹🇷' };
+                const titles = {
+                    uk: 'UNITED KINGDOM (BEF)',
+                    canada: 'CANADIAN EXPEDITIONARY FORCE (CEF)',
+                    france: 'FRENCH ARMY (POILUS)',
+                    usa: 'UNITED STATES EXPEDITIONARY FORCE (AEF)',
+                    germany: 'GERMAN IMPERIAL ARMY',
+                    austria: 'AUSTRO-HUNGARIAN IMPERIAL ARMY',
+                    ottoman: 'OTTOMAN IMPERIAL ARMY'
+                };
+                const badgeEl = document.getElementById('match-settings-country-badge');
+                if (badgeEl) {
+                    badgeEl.innerText = `${flags[this.pendingCountry] || ''} ${titles[this.pendingCountry] || this.pendingFaction.toUpperCase()}`;
+                }
+
+                this.closeAllModals();
+                this.openModal('matchSettings');
+            });
+        });
+
+        // PRE-BATTLE MATCH SETTINGS CONTROLS
+        this.selectedMode = 'checkpoints';
+        this.selectedWeather = 'fog';
+        this.selectedGarrison = '25';
+
+        document.querySelectorAll('#setting-gamemode-options .setting-option-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#setting-gamemode-options .setting-option-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.selectedMode = btn.getAttribute('data-mode');
+            });
+        });
+
+        document.querySelectorAll('#setting-weather-options .setting-option-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#setting-weather-options .setting-option-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.selectedWeather = btn.getAttribute('data-weather');
+            });
+        });
+
+        document.querySelectorAll('#setting-garrison-options .setting-option-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#setting-garrison-options .setting-option-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.selectedGarrison = btn.getAttribute('data-garrison');
+            });
+        });
+
+        // Disaster Frequency Slider
+        this.selectedDisasterFrequency = '50';
+        const disasterSlider = document.getElementById('setting-disaster-slider');
+        const disasterLabel = document.getElementById('setting-disaster-label');
+        if (disasterSlider) {
+            disasterSlider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value, 10);
+                this.selectedDisasterFrequency = String(val);
+                if (disasterLabel) {
+                    if (val === 0) disasterLabel.innerText = 'OFF (0%)';
+                    else if (val === 100) disasterLabel.innerText = 'CONSTANT (100%)';
+                    else if (val >= 80) disasterLabel.innerText = `HIGH (${val}%)`;
+                    else if (val <= 30) disasterLabel.innerText = `LOW (${val}%)`;
+                    else disasterLabel.innerText = `MODERATE (${val}%)`;
+                }
+            });
+        }
+
+        const commenceBtn = document.getElementById('btn-commence-battle');
+        if (commenceBtn) {
+            commenceBtn.addEventListener('click', () => {
+                const matchOptions = {
+                    gameMode: this.selectedMode || 'checkpoints',
+                    weather: this.selectedWeather || 'fog',
+                    startingMen: this.selectedGarrison || '25',
+                    disasterFrequency: this.selectedDisasterFrequency || '50'
+                };
 
                 this.closeAllModals();
                 this.switchScreen('battle');
                 if (this.engine) {
-                    this.engine.resetBattle(selectedFaction, selectedCountry);
+                    this.engine.resetBattle(this.pendingFaction || 'entente', this.pendingCountry || 'uk', matchOptions);
                 }
             });
-        });
+        }
 
         const returnBtn = document.getElementById('btn-return-menu');
         if (returnBtn) {
@@ -593,18 +671,44 @@ class UIController {
         if (this.moraleText) this.moraleText.innerText = `${moraleVal}%`;
         if (this.moraleBar) this.moraleBar.style.width = `${moraleVal}%`;
 
-        // Time
+        // Time & Disaster Badge Update
         if (this.timeText) this.timeText.innerText = this.engine ? this.engine.getFormattedTime() : '06:00 HOURS';
+
+        const disasterBox = document.getElementById('hud-disaster-box');
+        const disasterIcon = document.getElementById('hud-disaster-icon');
+        const disasterTimer = document.getElementById('hud-disaster-timer');
+        if (disasterBox) {
+            if (state.activeDisaster) {
+                disasterBox.classList.remove('hidden');
+                if (disasterIcon) disasterIcon.innerText = state.activeDisaster.icon || '☣️';
+                if (disasterTimer) disasterTimer.innerText = `${state.activeDisaster.title} (${Math.ceil(state.activeDisaster.durationRemaining)}s)`;
+            } else {
+                disasterBox.classList.add('hidden');
+            }
+        }
 
         if (lightHud) return; // skip CP-dot churn / button disable thrash while panels open
 
-        // Capture Point HUD Dots (Western only)
+        // Capture Point HUD Dots (Checkpoints vs King of the Hill)
         if (this.engine && this.engine.renderer && this.engine.renderer.capturePoints && this.engine.renderer.capturePoints.length > 0) {
-            const CAPTURE_TIME = 8.0;
-            this.engine.renderer.capturePoints.forEach((cp, i) => {
+            const cps = this.engine.renderer.capturePoints;
+            const isKoth = cps.length === 1;
+
+            const cp1 = document.getElementById('cp-1');
+            const cp2 = document.getElementById('cp-2');
+            const arrows = document.querySelectorAll('.cp-arrow');
+
+            if (cp1) cp1.classList.toggle('hidden', isKoth);
+            if (cp2) cp2.classList.toggle('hidden', isKoth);
+            arrows.forEach(a => a.classList.toggle('hidden', isKoth));
+
+            cps.forEach((cp, i) => {
                 const dot = document.getElementById(`cp-dot-${i}`);
                 const indicator = document.getElementById(`cp-${i}`);
+                const label = document.getElementById(`cp-label-${i}`);
                 if (!dot || !indicator) return;
+
+                if (label) label.innerText = cp.label || (isKoth ? 'HILL-100' : `C-${i + 1}`);
 
                 const inRange = this.engine.renderer.units.filter(u =>
                     u.hp > 0 && (u.type === 'rifleman' || u.type === 'skirmisher') && Math.abs(u.x - cp.x) < 45

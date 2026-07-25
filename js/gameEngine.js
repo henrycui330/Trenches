@@ -86,7 +86,11 @@ class GameEngine {
         window.gameEngineInstance = this;
     }
 
-    resetBattle(faction, country) {
+    resetBattle(faction, country, matchOptions = {}) {
+        this.matchOptions = matchOptions;
+        this.state.gameMode = matchOptions.gameMode || 'checkpoints';
+        this.state.weather = matchOptions.weather || 'fog';
+        this.state.startingMen = parseInt(matchOptions.startingMen || 25, 10);
         this.state.playerFaction = faction;
         this.state.playerCountry = country;
         this.state.enemyFaction = faction === 'entente' ? 'central' : 'entente';
@@ -114,6 +118,15 @@ class GameEngine {
         this.state.hqSpawnTimer = 0;
         this.state.gameTimeMinutes = 360;
         this.state.aiTimer = 0;
+        this.state.kothTimer = 0;
+
+        // Disaster System State
+        this.state.disasterFrequency = parseInt(matchOptions.disasterFrequency || 50, 10);
+        this.state.activeDisaster = null;
+        this.state.disasterTimer = 0;
+        this.state.isSupplyCut = false;
+        this.state.isTrenchFlooded = false;
+        this.state.choleraTick = 0;
 
         if (this.renderer) {
             this.renderer.playerFaction = faction;
@@ -122,7 +135,7 @@ class GameEngine {
                 this.renderer.mpGuestView = false;
                 this.renderer.mpRoster = null;
             }
-            this.renderer.reloadBattlefield();
+            this.renderer.reloadBattlefield(matchOptions);
             this.renderer.setPlayerFaction(faction, country);
         }
 
@@ -190,10 +203,10 @@ class GameEngine {
      * Solo: local player unlocks; AI/enemy owners get none.
      */
     getUnlocksForOwner(ownerId) {
+        if (!this.playerUnlocksMap) this.playerUnlocksMap = {};
+        this.playerUnlocksMap[this.getLocalPlayerId()] = { unlockedUpgrades: this.state.unlockedUpgrades };
         if (typeof TrenchesUnlocks !== 'undefined') {
-            return TrenchesUnlocks.getUnlocksForOwner(ownerId, {
-                [this.getLocalPlayerId()]: { unlockedUpgrades: this.state.unlockedUpgrades }
-            });
+            return TrenchesUnlocks.getUnlocksForOwner(ownerId, this.playerUnlocksMap);
         }
         if (!ownerId || ownerId === 'ai') {
             return {
@@ -201,11 +214,7 @@ class GameEngine {
                 rifleTier1: false, rifleTier2: false, rifleTier3: false
             };
         }
-        if (ownerId === this.getLocalPlayerId()) return this.state.unlockedUpgrades;
-        return {
-            mgTier1: false, mgTier2: false, mgTier3: false, officerTier1: false,
-            rifleTier1: false, rifleTier2: false, rifleTier3: false
-        };
+        return (this.playerUnlocksMap[ownerId] && this.playerUnlocksMap[ownerId].unlockedUpgrades) || this.state.unlockedUpgrades;
     }
 
     start() {
@@ -274,6 +283,12 @@ class GameEngine {
         this.state.xp -= cost;
         this.state.unlockedUpgrades[upgradeKey] = true;
 
+        if (!this.playerUnlocksMap) this.playerUnlocksMap = {};
+        this.playerUnlocksMap[this.getLocalPlayerId()] = { unlockedUpgrades: this.state.unlockedUpgrades };
+        if (this.isMpGuest() && this.mpClient) {
+            this.mpClient.sendCmd({ orderType: 'buy_upgrade', upgradeKey });
+        }
+
         const upgradeNames = {
             mgTier1: "MG Tier 1 (10% Overheat Protection)",
             mgTier2: "MG Tier 2 (+10% MG Accuracy)",
@@ -309,37 +324,43 @@ class GameEngine {
     loop(currentTimestamp) {
         if (!this.state.isRunning) return;
 
-        const rawDelta = (currentTimestamp - this.lastTimestamp) / 1000;
-        this.lastTimestamp = currentTimestamp;
+        try {
+            const rawDelta = Math.min(0.15, (currentTimestamp - this.lastTimestamp) / 1000);
+            this.lastTimestamp = currentTimestamp;
 
-        if (!this.state.isPaused) {
-            const deltaTime = rawDelta * this.state.gameSpeed;
-            // Guests render host snapshots only — host runs the sim
-            if (!this.isMpGuest()) {
-                this.update(deltaTime);
-                if (this.isMpHost()) {
-                    this._snapTimer += deltaTime;
-                    this._bodySnapTimer = (this._bodySnapTimer || 0) + deltaTime;
-                    this.flushMpFxBurst();
-                    // ~30 Hz over P2P when ready, else 20 Hz via WS fallback
-                    const p2p = this.mpClient && this.mpClient.p2pReadyCount && this.mpClient.p2pReadyCount() > 0;
-                    const interval = p2p ? 0.033 : 0.05;
-                    if (this._snapTimer >= interval) {
-                        this._snapTimer = 0;
-                        const includeBodies = this._bodySnapTimer >= 0.5;
-                        if (includeBodies) this._bodySnapTimer = 0;
-                        this.broadcastMpSnapshot({ includeBodies });
+            if (!this.state.isPaused) {
+                const deltaTime = rawDelta * this.state.gameSpeed;
+                // Guests render host snapshots only — host runs the sim
+                if (!this.isMpGuest()) {
+                    this.update(deltaTime);
+                    if (this.isMpHost()) {
+                        this._snapTimer += deltaTime;
+                        this._bodySnapTimer = (this._bodySnapTimer || 0) + deltaTime;
+                        this.flushMpFxBurst();
+                        // ~30 Hz over P2P when ready, else 20 Hz via WS fallback
+                        const p2p = this.mpClient && this.mpClient.p2pReadyCount && this.mpClient.p2pReadyCount() > 0;
+                        const interval = p2p ? 0.033 : 0.05;
+                        if (this._snapTimer >= interval) {
+                            this._snapTimer = 0;
+                            const includeBodies = this._bodySnapTimer >= 0.5;
+                            if (includeBodies) this._bodySnapTimer = 0;
+                            this.broadcastMpSnapshot({ includeBodies });
+                        }
                     }
+                } else {
+                    this.flushMpSnapshot();
+                    this.updateGuestLocal(deltaTime);
+                    this._checkGuestSyncHealth();
                 }
-            } else {
-                this.flushMpSnapshot();
-                this.updateGuestLocal(deltaTime);
-                this._checkGuestSyncHealth();
+                this.renderer.render(deltaTime * 1000);
             }
-            this.renderer.render(deltaTime * 1000);
+        } catch (err) {
+            console.error('[ENGINE] Frame loop exception safely caught:', err);
         }
 
-        requestAnimationFrame((ts) => this.loop(ts));
+        if (this.state.isRunning) {
+            requestAnimationFrame((ts) => this.loop(ts));
+        }
     }
 
     update(dt) {
@@ -358,6 +379,23 @@ class GameEngine {
         if (this.state.officerCooldown > 0) {
             this.state.officerCooldown = Math.max(0, this.state.officerCooldown - dt);
         }
+
+        // 3b. King of the Hill Morale Drain (holding HILL-100 drains opponent morale)
+        if (this.state.gameMode === 'koth' && this.renderer && this.renderer.capturePoints && this.renderer.capturePoints[0]) {
+            const hill = this.renderer.capturePoints[0];
+            this.state.kothTimer = (this.state.kothTimer || 0) + dt;
+            if (this.state.kothTimer >= 5.0) {
+                this.state.kothTimer = 0;
+                if (hill.owner === this.state.playerFaction) {
+                    this.adjustMorale(1);
+                } else if (hill.owner === this.state.enemyFaction) {
+                    this.adjustMorale(-1);
+                }
+            }
+        }
+
+        // 3c. Disaster & Random Event Management
+        this.updateDisasters(dt);
 
         // 4. HQ Continuous Reinforcement Streams (Every 10 seconds)
         this.state.hqSpawnTimer += dt;
@@ -809,9 +847,140 @@ class GameEngine {
             case 'buy_officer_stream':
                 this.renderer.spawnHQSpecialist(faction, 'officer', fromId);
                 break;
+            case 'place_building':
+                if (cmd.structureType && cmd.x != null && cmd.y != null) {
+                    this.renderer.constructStructureAt(faction, cmd.structureType, cmd.x, cmd.y);
+                }
+                break;
+            case 'buy_upgrade':
+                if (cmd.upgradeKey) {
+                    if (!this.playerUnlocksMap) this.playerUnlocksMap = {};
+                    if (!this.playerUnlocksMap[fromId]) {
+                        const U = (typeof TrenchesUnlocks !== 'undefined') ? TrenchesUnlocks : null;
+                        this.playerUnlocksMap[fromId] = { unlockedUpgrades: U ? U.createEmptyUnlocks() : {} };
+                    }
+                    this.playerUnlocksMap[fromId].unlockedUpgrades[cmd.upgradeKey] = true;
+                }
+                break;
             default:
                 break;
         }
         this.broadcastMpSnapshot();
+    }
+
+    updateDisasters(dt) {
+        const freq = this.state.disasterFrequency;
+        if (freq === undefined || freq <= 0) {
+            this.state.activeDisaster = null;
+            this.state.isSupplyCut = false;
+            this.state.isTrenchFlooded = false;
+            return;
+        }
+
+        // Active Disaster Timer Tick
+        if (this.state.activeDisaster) {
+            const dis = this.state.activeDisaster;
+            dis.durationRemaining -= dt;
+
+            if (dis.type === 'trench_flood') {
+                this.state.choleraTick = (this.state.choleraTick || 0) + dt;
+                if (this.state.choleraTick >= 4.0) {
+                    this.state.choleraTick = 0;
+                    if (this.renderer && this.renderer.units) {
+                        const inTrenches = this.renderer.units.filter(u => u.hp > 0 && u.inCover);
+                        inTrenches.forEach(u => {
+                            if (Math.random() < 0.35) {
+                                u.hp -= Math.floor(10 + Math.random() * 15);
+                                if (u.hp <= 0 && this.renderer.spawnBloodPuff) {
+                                    this.renderer.spawnBloodPuff(u.x, u.y);
+                                }
+                            }
+                        });
+                    }
+                }
+            } else if (dis.type === 'supply_cut') {
+                this.state.isSupplyCut = true;
+            }
+
+            if (dis.durationRemaining <= 0) {
+                this.notifyTelegraph(`DISASTER PASSED: ${dis.title} has ended. Operations returning to normal.`, true);
+                this.state.activeDisaster = null;
+                this.state.isSupplyCut = false;
+                this.state.isTrenchFlooded = false;
+                this.notifyStateChange();
+            }
+            return;
+        }
+
+        // Disaster Scheduler: Frequency 100% -> ~12s interval; Frequency 50% -> ~150s interval
+        const targetInterval = 12 + Math.floor(((100 - freq) / 100) * 270);
+        this.state.disasterTimer = (this.state.disasterTimer || 0) + dt;
+
+        if (this.state.disasterTimer >= targetInterval) {
+            this.state.disasterTimer = 0;
+            const disasterTypes = ['trench_flood', 'rat_infestation', 'supply_cut'];
+            const type = disasterTypes[Math.floor(Math.random() * disasterTypes.length)];
+            this.triggerDisaster(type);
+        }
+    }
+
+    triggerDisaster(type) {
+        if (type === 'trench_flood') {
+            this.state.isTrenchFlooded = true;
+            this.state.activeDisaster = {
+                type: 'trench_flood',
+                title: 'TRENCH FLOOD & CHOLERA',
+                icon: '🌊',
+                durationRemaining: 120,
+                durationTotal: 120
+            };
+            this.notifyTelegraph('🌊 DISASTER STRIKES: Heavy rainfall floods trenches! Soldiers suffering cholera & disease damage (2 min)!', true);
+            if (window.UIController) {
+                window.UIController.triggerCustomBanner('🌊 DISASTER: TRENCH FLOOD & CHOLERA', 'Water levels rising in trenches — garrisoned troops taking periodic disease damage!');
+            }
+        } else if (type === 'rat_infestation') {
+            this.state.activeDisaster = {
+                type: 'rat_infestation',
+                title: 'RAT INFESTATION',
+                icon: '🐀',
+                durationRemaining: 90,
+                durationTotal: 90
+            };
+            this.adjustMorale(-50);
+            if (this.renderer && this.renderer.units) {
+                const totalUnits = this.renderer.units.filter(u => u.hp > 0);
+                const countToHit = Math.max(1, Math.floor(totalUnits.length * 0.05));
+                for (let i = 0; i < countToHit; i++) {
+                    const victim = totalUnits[Math.floor(Math.random() * totalUnits.length)];
+                    if (victim) {
+                        victim.hp = Math.max(0, victim.hp - Math.floor(35 + Math.random() * 40));
+                    }
+                }
+            }
+            this.notifyTelegraph('🐀 DISASTER STRIKES: Massive Rat Infestation overruns trenches! Army Morale dropped -50%, 5% disease casualties! (1.5 min)', true);
+            if (window.UIController) {
+                window.UIController.triggerCustomBanner('🐀 DISASTER: RAT INFESTATION', 'Morale collapsed -50%! Disease spreading among frontline troops.');
+            }
+        } else if (type === 'supply_cut') {
+            this.state.isSupplyCut = true;
+            this.state.activeDisaster = {
+                type: 'supply_cut',
+                title: 'SUPPLY CUT (NO HEALING)',
+                icon: '📦',
+                durationRemaining: 60,
+                durationTotal: 60
+            };
+            this.adjustMorale(-20);
+            if (this.renderer && this.renderer.units) {
+                this.renderer.units.forEach(u => {
+                    if (u.hp > 0) u.hp = Math.max(1, Math.floor(u.hp * 0.95));
+                });
+            }
+            this.notifyTelegraph('📦 DISASTER STRIKES: Supply lines severed! All troops lost 5% HP, Morale -20%. Medics blocked from healing! (1 min)', true);
+            if (window.UIController) {
+                window.UIController.triggerCustomBanner('📦 DISASTER: SUPPLY LINES SEVERED', 'All troops lost 5% HP, Morale -20%. Field Medics blocked from healing!');
+            }
+        }
+        this.notifyStateChange();
     }
 }

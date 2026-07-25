@@ -153,7 +153,7 @@ class BattlefieldRenderer {
 
     /** Guest + lite graphics preference. */
     isGuestLite() {
-        return !!this.mpGuestView && this.guestRenderLite !== false;
+        return !!this.mpGuestView && this.guestRenderLite === true;
     }
 
     setGuestRenderLite(lite) {
@@ -192,23 +192,35 @@ class BattlefieldRenderer {
         } catch (_) { /* ignore */ }
     }
 
-    applyMapLayout() {
+    applyMapLayout(mode = 'checkpoints') {
+        this.gameMode = mode;
         this.mapId = 'western';
         this.worldWidth = 4800;
         this.ententeSupportTrenchX = 480;
         this.ententeTrenchX = 900;
-        this.capturePoints = [
-            { x: 1700, owner: null, progress: 0, path: null, label: 'CHARLIE-1' },
-            { x: 2400, owner: null, progress: 0, path: null, label: 'CHARLIE-2' },
-            { x: 3100, owner: null, progress: 0, path: null, label: 'CHARLIE-3' },
-        ];
         this.centralTrenchX = 3900;
         this.centralSupportTrenchX = 4320;
-        console.log(`[MAP] Applied western layout world=${this.worldWidth} cps=${this.capturePoints.length}`);
+
+        if (mode === 'koth') {
+            this.capturePoints = [
+                { x: 2400, owner: null, progress: 0, path: null, label: 'HILL-100' }
+            ];
+        } else {
+            this.capturePoints = [
+                { x: 1700, owner: null, progress: 0, path: null, label: 'CHARLIE-1' },
+                { x: 2400, owner: null, progress: 0, path: null, label: 'CHARLIE-2' },
+                { x: 3100, owner: null, progress: 0, path: null, label: 'CHARLIE-3' },
+            ];
+        }
+        console.log(`[MAP] Applied layout mode=${mode} world=${this.worldWidth} cps=${this.capturePoints.length}`);
     }
 
-    reloadBattlefield() {
-        this.applyMapLayout();
+    reloadBattlefield(options = {}) {
+        this.gameMode = options.gameMode || 'checkpoints';
+        this.weatherType = options.weather || 'fog';
+        this.startingGarrisonCount = parseInt(options.startingMen || 25, 10);
+
+        this.applyMapLayout(this.gameMode);
         this.units = [];
         this.deadBodies = [];
         this.structures = [];
@@ -219,6 +231,7 @@ class BattlefieldRenderer {
         this.tracers = [];
         this.planes = [];
         this.generateTerrainFeatures();
+        this.initWeather(this.weatherType);
         this.spawnInitialGarrisons();
         if (this.playerFaction === 'central') {
             this.camera.x = Math.max(0, this.centralTrenchX - 900);
@@ -324,7 +337,7 @@ class BattlefieldRenderer {
 
     _spawnFactionGarrison(faction) {
         const roster = this._getFactionRoster(faction);
-        const totalRifle = 25;
+        const totalRifle = this.startingGarrisonCount || 25;
         const yMin = 150;
         const ySpan = this.worldHeight - 300;
         const frontPath = faction === 'entente' ? this.ententeFrontPath : this.centralFrontPath;
@@ -399,10 +412,14 @@ class BattlefieldRenderer {
         const resolvedOwnerId = this._resolveOwnerId(faction, ownerId);
         const resolvedCountry = country || this._countryForOwner(resolvedOwnerId, faction);
         const unlocks = this._getUnlocksForOwner(resolvedOwnerId);
-        let range = 450;
-        if (type === 'machinegunner') range = 550;
-        else if (type === 'skirmisher') range = 180;
-        else if (type === 'engineer' || type === 'artilleryman' || type === 'officer') range = 260;
+        let range = 750;
+        if (type === 'machinegunner') range = 900;
+        else if (type === 'skirmisher') range = 320;
+        else if (type === 'engineer' || type === 'artilleryman' || type === 'officer') range = 420;
+        else if (type === 'rifleman') {
+            if (unlocks.rifleTier2) range = 900;
+            else if (unlocks.rifleTier1) range = 830;
+        }
         
         const baseHp = (type === 'rifleman' && unlocks.rifleTier3) ? 115 : 100;
         const isFrontline = type === 'rifleman' || type === 'skirmisher';
@@ -429,7 +446,7 @@ class BattlefieldRenderer {
             grenadeCooldown: type === 'skirmisher' ? 1.5 + Math.random() * 2 : 0,
             hp: baseHp,
             maxHp: baseHp,
-            speed: type === 'engineer' ? 1.1 : (type === 'machinegunner' ? 0.8 : (type === 'officer' ? 1.05 : (type === 'medic' ? 1.15 : (type === 'skirmisher' ? 1.05 : 0.95)))),
+            speed: type === 'engineer' ? 2.2 : (type === 'machinegunner' ? 1.6 : (type === 'officer' ? 2.0 : (type === 'medic' ? 2.3 : (type === 'skirmisher' ? 2.2 : 1.9)))),
             range: range,
             shootCooldown: Math.random() * 2.5,
             isAiming: false,
@@ -531,6 +548,72 @@ class BattlefieldRenderer {
         return type === 'rifleman' || type === 'skirmisher';
     }
 
+    /** Y span a soldier may patrol (full trench, or co-op owner band). */
+    _ownerYBand(faction, ownerId) {
+        const yMin = 150;
+        const ySpan = this.worldHeight - 300;
+        if (!this.mpRoster || !this.mpRoster.length) {
+            return { yMin, yMax: yMin + ySpan };
+        }
+        const roster = this._getFactionRoster(faction);
+        const n = Math.max(1, roster.length);
+        let idx = roster.findIndex(r => r.ownerId === ownerId);
+        if (idx < 0) idx = 0;
+        const band = ySpan / n;
+        const lo = yMin + idx * band + 8;
+        const hi = yMin + (idx + 1) * band - 8;
+        return { yMin: lo, yMax: Math.max(lo + 50, hi) };
+    }
+
+    /** Nearest enemy this garrison should slide toward along the trench. */
+    _findTrenchThreat(u) {
+        const path = this._getPathForHoldLine(u.faction, u.holdLine || 'main');
+        const myLineX = this.getTrenchXAtY(path, u.y);
+        let best = null;
+        let bestScore = Infinity;
+        const gunReach = (u.range || 750) + 150;
+
+        for (let i = 0; i < this.units.length; i++) {
+            const e = this.units[i];
+            if (!e || e.hp <= 0 || e.faction === u.faction) continue;
+
+            const xDist = Math.abs(e.x - myLineX);
+            const dist = Math.hypot(e.x - u.x, e.y - u.y);
+            const onOurLine = xDist < 100; // infiltrator / melee in our trench
+            const inGunArc = dist < gunReach;
+            const chargingIn = e.state === 'charging' && xDist < gunReach + 80;
+            if (!onOurLine && !inGunArc && !chargingIn) continue;
+
+            // Prefer closer threats; slight bias to larger |dy| so a bottom threat pulls the line down
+            const score = dist - Math.min(80, Math.abs(e.y - u.y) * 0.15);
+            if (score < bestScore) {
+                bestScore = score;
+                best = e;
+            }
+        }
+        return best;
+    }
+
+    /** Soft unstick only — used while reacting to a threat, not for idle milling. */
+    _trenchSeparationPush(u) {
+        const line = u.holdLine || 'main';
+        let push = 0;
+        for (let i = 0; i < this.units.length; i++) {
+            const other = this.units[i];
+            if (!other || other === u || other.hp <= 0 || other.faction !== u.faction) continue;
+            if (!this._isFrontlineInfantry(other.type) || other.state !== 'garrison') continue;
+            if ((other.holdLine || 'main') !== line) continue;
+            const dy = u.y - other.y;
+            const dist = Math.abs(dy);
+            if (dist < 0.5) {
+                push += (u.id > other.id ? 1 : -1) * 1.2;
+            } else if (dist < 22) {
+                push += Math.sign(dy) * (22 - dist) * 0.1;
+            }
+        }
+        return push;
+    }
+
     // HQ infantry always deploy to MAIN trench only (CPs via Over the Top / Reinforcements)
     spawnHQRifleman(faction, ownerId = null) {
         this._spawnHQInfantry(faction, 'rifleman', ownerId);
@@ -599,10 +682,11 @@ class BattlefieldRenderer {
         if (!this.capturePoints || this.capturePoints.length === 0) {
             return ['main', 'enemy'];
         }
+        const cpKeys = this.capturePoints.map((_, i) => `cp${i}`);
         if (faction === 'entente') {
-            return ['main', 'cp0', 'cp1', 'cp2', 'enemy'];
+            return ['main', ...cpKeys, 'enemy'];
         }
-        return ['main', 'cp2', 'cp1', 'cp0', 'enemy'];
+        return ['main', ...cpKeys.slice().reverse(), 'enemy'];
     }
 
     _labelForHoldLine(holdLine) {
@@ -868,15 +952,15 @@ class BattlefieldRenderer {
                 }
                 const dx = x - existing.x;
                 const dy = y - existing.y;
-                // Guest: snap harder (less per-unit math) — smoother camera under load
-                const blend = this.isGuestLite() ? 1 : 0.9;
-                const snapDist = this.isGuestLite() ? 24 : 48;
-                if (Math.hypot(dx, dy) > snapDist) {
+                const dist = Math.hypot(dx, dy);
+                if (dist > 80) {
                     existing.x = x;
                     existing.y = y;
+                    existing.targetX = x;
+                    existing.targetY = y;
                 } else {
-                    existing.x += dx * blend;
-                    existing.y += dy * blend;
+                    existing.targetX = x;
+                    existing.targetY = y;
                 }
                 existing.faction = faction;
                 existing.ownerId = ownerId;
@@ -918,8 +1002,8 @@ class BattlefieldRenderer {
                     assignedTargetId: null,
                     reviveTimer: 0,
                     inCover: state === 'garrison' || state === 'reserve',
-                    speed: type === 'engineer' ? 1.1 : (type === 'machinegunner' ? 0.8 : (type === 'officer' ? 1.05 : (type === 'medic' ? 1.15 : (type === 'skirmisher' ? 1.05 : 0.95)))),
-                    range: type === 'machinegunner' ? 550 : (type === 'skirmisher' ? 180 : (type === 'engineer' || type === 'artilleryman' || type === 'officer' ? 260 : 450))
+                    speed: type === 'engineer' ? 2.2 : (type === 'machinegunner' ? 1.6 : (type === 'officer' ? 2.0 : (type === 'medic' ? 2.3 : (type === 'skirmisher' ? 2.2 : 1.9)))),
+                    range: type === 'machinegunner' ? 900 : (type === 'skirmisher' ? 320 : (type === 'engineer' || type === 'artilleryman' || type === 'officer' ? 420 : 750))
                 });
             }
         }
@@ -1028,27 +1112,36 @@ class BattlefieldRenderer {
         }
     }
 
-    initWeather() {
-        this.weather.fogParticles = [];
-        this.weather.rainParticles = [];
-        if (this.isGuestLite()) return; // lite guests skip weather fill
-        for (let i = 0; i < 60; i++) {
-            this.weather.fogParticles.push({
-                x: Math.random() * this.worldWidth,
-                y: Math.random() * this.worldHeight,
-                radius: 120 + Math.random() * 180,
-                vx: 0.1 + Math.random() * 0.25,
-                opacity: 0.08 + Math.random() * 0.12
-            });
+    initWeather(type = 'fog') {
+        this.weather = {
+            type: type,
+            fogParticles: [],
+            rainParticles: []
+        };
+        if (this.isGuestLite() || type === 'clear') return;
+
+        if (type === 'fog' || type === 'smog') {
+            const baseOpacity = type === 'smog' ? 0.16 : 0.08;
+            for (let i = 0; i < 60; i++) {
+                this.weather.fogParticles.push({
+                    x: Math.random() * this.worldWidth,
+                    y: Math.random() * this.worldHeight,
+                    radius: 120 + Math.random() * 180,
+                    vx: 0.1 + Math.random() * 0.25,
+                    opacity: baseOpacity + Math.random() * 0.1
+                });
+            }
         }
-        for (let i = 0; i < 150; i++) {
-            this.weather.rainParticles.push({
-                x: Math.random() * this.worldWidth,
-                y: Math.random() * this.worldHeight,
-                length: 12 + Math.random() * 18,
-                vy: 12 + Math.random() * 8,
-                vx: -2 - Math.random() * 2
-            });
+        if (type === 'rain') {
+            for (let i = 0; i < 200; i++) {
+                this.weather.rainParticles.push({
+                    x: Math.random() * this.worldWidth,
+                    y: Math.random() * this.worldHeight,
+                    length: 14 + Math.random() * 20,
+                    vy: 14 + Math.random() * 10,
+                    vx: -2 - Math.random() * 2
+                });
+            }
         }
     }
 
@@ -1111,7 +1204,21 @@ class BattlefieldRenderer {
                 const worldX = (e.clientX - rect.left) / this.camera.zoom + this.camera.x;
                 const worldY = (e.clientY - rect.top) / this.camera.zoom + this.camera.y;
 
-                this.constructStructureAt(this.playerFaction, this.buildMode.structureType, worldX, worldY);
+                if (window.gameEngineInstance && window.gameEngineInstance.isMpGuest()) {
+                    window.gameEngineInstance.mpClient.sendCmd({
+                        orderType: 'place_building',
+                        structureType: this.buildMode.structureType,
+                        x: Math.round(worldX),
+                        y: Math.round(worldY)
+                    });
+                    if (window.gameEngineInstance.notifyTelegraph) {
+                        const buildTimeStr = this.buildMode.structureType === 'artillery_gun' ? '90s' : '60s';
+                        const structName = this.buildMode.structureType === 'artillery_gun' ? 'Field Artillery Gun' : 'Machine Gun Nest';
+                        window.gameEngineInstance.notifyTelegraph(`ENGINEERING DIRECTIVE: Construction order dispatched for ${structName} (${buildTimeStr}).`);
+                    }
+                } else {
+                    this.constructStructureAt(this.playerFaction, this.buildMode.structureType, worldX, worldY);
+                }
                 
                 this.buildMode.active = false;
                 this.canvas.style.cursor = 'crosshair';
@@ -1247,6 +1354,10 @@ class BattlefieldRenderer {
     }
 
     updateMedicBehavior(dt) {
+        if (window.gameEngineInstance && window.gameEngineInstance.state && window.gameEngineInstance.state.isSupplyCut) {
+            return; // Medics cannot heal/revive during Supply Cut blackout!
+        }
+
         const medics = this.units.filter(u => u.type === 'medic' && u.hp > 0);
         if (medics.length === 0) return;
 
@@ -1416,7 +1527,7 @@ class BattlefieldRenderer {
                     if (gunner) {
                         gunner.x = s.x;
                         gunner.y = s.y;
-                        gunner.range = 550;
+                        gunner.range = 950;
                     } else {
                         s.occupiedBy = null;
                         const newGunner = this.units.find(u => u.faction === s.faction && u.type === 'machinegunner' && u.state === 'reserve');
@@ -1482,12 +1593,13 @@ class BattlefieldRenderer {
                     || this.capturePoints.some(cp => Math.abs(u.x - cp.x) < 30);
             }
 
-            if (unlocks.rifleTier1 && u.type === 'rifleman') {
-                const meleeVictim = this.units.find(e => e.faction !== u.faction && e.hp > 0 && Math.hypot(e.x - u.x, e.y - u.y) < 25);
+            if (this._isFrontlineInfantry(u.type)) {
+                const meleeVictim = this.units.find(e => e.faction !== u.faction && e.hp > 0 && Math.hypot(e.x - u.x, e.y - u.y) < 30);
                 if (meleeVictim) {
+                    u.bayonetThrustTimer = 0.6;
                     this.spawnBloodPuff(meleeVictim.x, meleeVictim.y);
                     if (!this.combatVisualOnly) {
-                        meleeVictim.hp -= 60;
+                        meleeVictim.hp -= 60; // Lethal bayonet thrust!
                         if (meleeVictim.hp <= 0) this.killSoldier(meleeVictim);
                     }
                     continue;
@@ -1656,7 +1768,7 @@ class BattlefieldRenderer {
                 if (isHit && victim) {
                     this.spawnBloodPuff(victim.x, victim.y);
                     if (!this.combatVisualOnly) {
-                        const dmg = 35 + Math.random() * 25;
+                        const dmg = 25; // MG hit = 25% max health!
                         victim.hp -= dmg;
                         if (victim.hp <= 0) this.killSoldier(victim);
                     }
@@ -1705,13 +1817,13 @@ class BattlefieldRenderer {
             if (!this.combatVisualOnly) {
                 let damage;
                 if (u.type === 'skirmisher') {
-                    damage = 55 + Math.random() * 30;
+                    damage = 60; // Heavy shot
                 } else if (u.type === 'rifleman' || u.type === 'medic') {
-                    damage = 35 + Math.random() * 25;
+                    damage = 50; // Rifle shot = 50% max health (half a person's damage!)
                 } else {
-                    damage = 25 + Math.random() * 20;
+                    damage = 12.5; // Pistol shot = 10-15% max health!
                 }
-                if (unlocks.rifleTier2 && u.type === 'rifleman') damage *= 1.10;
+                if (unlocks.rifleTier2 && u.type === 'rifleman') damage = 55;
                 if (isOneShotKill) damage = 999;
                 enemy.hp -= damage;
                 if (enemy.hp <= 0) this.killSoldier(enemy);
@@ -1790,30 +1902,32 @@ class BattlefieldRenderer {
     }
 
     /**
-     * Guest-only: keep charging/retreating units walking so the screen isn't frozen,
-     * but never flip state / capture / morale — host snapshots own those.
+     * Guest-only: continuous 60 FPS lerp interpolation towards latest target coordinates
+     * received from host snapshots. Eliminates stutter and position popping.
      */
     updateGuestCosmeticMovement(dt) {
+        const lerpRate = Math.min(1.0, dt * 24.0);
         this.units.forEach(u => {
-            if (!u || u.hp <= 0 || u.isAiming) return;
-            if (u.state === 'charging') {
-                const targetX = u.chargeTargetX !== undefined
-                    ? u.chargeTargetX
-                    : this._getXForHoldLine(u.faction, u.chargeHoldLine || 'enemy');
-                const dx = targetX - u.x;
-                if (Math.abs(dx) > 8) {
-                    u.x += Math.sign(dx) * u.speed;
-                    u.y += (Math.random() - 0.5) * 0.3;
-                    u.inCover = false;
+            if (!u || u.hp <= 0) return;
+
+            if (u.targetX !== undefined && u.targetY !== undefined) {
+                const dx = u.targetX - u.x;
+                const dy = u.targetY - u.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 80) {
+                    u.x = u.targetX;
+                    u.y = u.targetY;
+                } else if (dist > 0.05) {
+                    u.x += dx * lerpRate;
+                    u.y += dy * lerpRate;
                 }
-            } else if (u.state === 'retreating') {
-                const line = u.holdLine || 'main';
-                const path = this._getPathForHoldLine(u.faction, line);
-                const homeX = this.getTrenchXAtY(path, u.y);
-                const dx = homeX - u.x;
-                if (Math.abs(dx) > 10) {
-                    u.x += Math.sign(dx) * (u.speed * 1.15);
-                }
+            }
+
+            if (u.state === 'garrison' || u.state === 'reserve') {
+                u.inCover = true;
+            } else {
+                u.inCover = false;
             }
         });
     }
@@ -1829,8 +1943,8 @@ class BattlefieldRenderer {
                     const dx = u.targetX - u.x;
                     const dy = u.targetY - u.y;
                     if (Math.hypot(dx, dy) > 5) {
-                        u.x += Math.sign(dx) * u.speed;
-                        u.y += Math.sign(dy) * u.speed;
+                        u.x += Math.sign(dx) * (u.speed * 1.2);
+                        u.y += Math.sign(dy) * (u.speed * 1.2);
                     }
                 }
                 return;
@@ -1843,7 +1957,7 @@ class BattlefieldRenderer {
                     : this._getXForHoldLine(u.faction, u.chargeHoldLine || 'enemy');
                 const dx = targetX - u.x;
                 if (Math.abs(dx) > 8) {
-                    u.x += Math.sign(dx) * u.speed;
+                    u.x += Math.sign(dx) * (u.speed * 1.25);
                     u.y += (Math.random() - 0.5) * 0.3;
                     u.inCover = false;
                 } else {
@@ -1866,21 +1980,44 @@ class BattlefieldRenderer {
                 const homeX = this.getTrenchXAtY(path, u.y);
                 const dx = homeX - u.x;
                 if (Math.abs(dx) > 10) {
-                    u.x += Math.sign(dx) * (u.speed * 1.15);
+                    u.x += Math.sign(dx) * (u.speed * 1.35);
                 } else {
                     u.x = homeX;
                     u.state = 'garrison';
                     u.inCover = true;
                 }
+            } else if (u.state === 'garrison' && this._isFrontlineInfantry(u.type)) {
+                this._updateGarrisonTrenchReact(u, dt);
             } else if (u.state === 'garrison') {
-                // Softly snap X to this unit's assigned trench line (main or Charlie CP)
                 const path = this._getPathForHoldLine(u.faction, u.holdLine || 'main');
                 const targetX = this.getTrenchXAtY(path, u.y);
                 u.x += (targetX - u.x) * 0.05;
-                u.y += (Math.random() - 0.5) * 0.2;
-                u.y = Math.max(120, Math.min(this.worldHeight - 120, u.y));
             }
         });
+    }
+
+    /**
+     * Hold position unless a threat exists — then slide along the trench toward that enemy's Y.
+     * Example: enemy at the bottom of the line → garrison shifts down to engage. No idle pacing.
+     */
+    _updateGarrisonTrenchReact(u, dt) {
+        const path = this._getPathForHoldLine(u.faction, u.holdLine || 'main');
+        const band = this._ownerYBand(u.faction, u.ownerId);
+        const threat = this._findTrenchThreat(u);
+
+        if (threat) {
+            const dy = threat.y - u.y;
+            if (Math.abs(dy) > 8) {
+                const step = Math.min(Math.abs(dy), u.speed * 0.95);
+                u.y += Math.sign(dy) * step;
+            }
+            u.y += this._trenchSeparationPush(u) * 0.45;
+        }
+
+        u.y = Math.max(band.yMin, Math.min(band.yMax, u.y));
+        const targetX = this.getTrenchXAtY(path, u.y);
+        u.x += (targetX - u.x) * 0.15;
+        u.inCover = true;
     }
 
     orderCharge(faction) {
@@ -2164,6 +2301,23 @@ class BattlefieldRenderer {
             this.playerFaction === 'central',
             false
         );
+
+        if (window.gameEngineInstance && window.gameEngineInstance.state && window.gameEngineInstance.state.isTrenchFlooded) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(55, 90, 110, 0.55)';
+            ctx.lineWidth = 22;
+            [this.ententeFrontPath, this.centralFrontPath].forEach(pts => {
+                if (!pts || pts.length < 2) return;
+                ctx.beginPath();
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+                ctx.stroke();
+            });
+            ctx.fillStyle = 'rgba(55, 90, 110, 0.4)';
+            ctx.fillRect(this.ententeSupportTrenchX - 12, 0, 24, this.worldHeight);
+            ctx.fillRect(this.centralSupportTrenchX - 12, 0, 24, this.worldHeight);
+            ctx.restore();
+        }
 
         // Capture Point trenches — faction-tinted zigzag
         this.capturePoints.forEach(cp => {
@@ -2512,6 +2666,17 @@ class BattlefieldRenderer {
             ctx.save();
             ctx.translate(unit.x, unit.y);
 
+            // Sprinting Detection & Phase Update
+            const isSprinting = unit.state === 'charging' || unit.state === 'retreating' || unit.isSprinting;
+            if (isSprinting) {
+                unit.sprintPhase = (unit.sprintPhase || 0) + (deltaTime || 0.016) * 16.0;
+            } else {
+                unit.sprintPhase = 0;
+            }
+
+            const bodySway = isSprinting ? Math.sin(unit.sprintPhase) * 0.22 : 0;
+            const rifleSprintDip = isSprinting ? (0.45 + Math.sin(unit.sprintPhase) * 0.08) : 0;
+
             ctx.fillStyle = 'rgba(0,0,0,0.4)';
             ctx.beginPath();
             ctx.ellipse(0, 10, 12, 5, 0, 0, Math.PI * 2);
@@ -2543,6 +2708,13 @@ class BattlefieldRenderer {
                 ctx.fillText("➕ REVIVING", -35, -30);
             }
 
+            if (unit.bayonetThrustTimer && unit.bayonetThrustTimer > 0) {
+                unit.bayonetThrustTimer -= (deltaTime || 0.016);
+                ctx.font = 'bold 11px "Cinzel", serif';
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText("🗡️ BAYONET", -25, -32);
+            }
+
             // Draw Countryball Sprite — per-unit country (UK ally ≠ USA ally)
             const unitCountry = unit.country
                 || this._countryForOwner(unit.ownerId, unit.faction)
@@ -2550,6 +2722,8 @@ class BattlefieldRenderer {
             const sprite = this._getCountrySprite(unitCountry);
 
             if (sprite.loaded) {
+                ctx.save();
+                if (isSprinting) ctx.rotate(bodySway); // Front-back torso sway!
                 if (sprite.flip) {
                     ctx.save();
                     ctx.scale(-1, 1);
@@ -2558,6 +2732,7 @@ class BattlefieldRenderer {
                 } else {
                     ctx.drawImage(sprite.img, sprite.ox, sprite.oy, sprite.w, sprite.h);
                 }
+                ctx.restore();
             } else {
                 // Fallback colored circle
                 const color = unit.faction === 'entente' ? '#1e3a8a' : '#7f1d1d';
@@ -2574,6 +2749,7 @@ class BattlefieldRenderer {
                     ctx.save();
                     if (isFlipped) ctx.scale(-1, 1);
                     ctx.translate(4, 8);
+                    ctx.rotate(isSprinting ? (0.35 + Math.sin(unit.sprintPhase) * 0.1) : 0);
                     ctx.drawImage(this.pistolImg, 0, -4, 18, 12);
                     ctx.restore();
                 }
@@ -2581,7 +2757,7 @@ class BattlefieldRenderer {
                 ctx.save();
                 if (isFlipped) ctx.scale(-1, 1);
                 ctx.translate(5, 8);
-                ctx.rotate(unit.isAiming ? -0.05 : 0.08);
+                ctx.rotate(isSprinting ? rifleSprintDip : (unit.isAiming ? -0.05 : 0.08));
                 if (this.shotgunImgLoaded) {
                     ctx.drawImage(this.shotgunImg, 0, -6, 34, 12);
                 } else {
@@ -2610,7 +2786,11 @@ class BattlefieldRenderer {
                 ctx.save();
                 if (isFlipped) ctx.scale(-1, 1);
                 ctx.translate(6, 10);
-                ctx.rotate(unit.isAiming ? -0.1 : 0.1);
+                if (isSprinting) {
+                    ctx.rotate(rifleSprintDip); // Rifle dips down into low trail carry!
+                } else {
+                    ctx.rotate(unit.isAiming ? -0.1 : 0.08); // Restores ready position when not sprinting!
+                }
                 ctx.drawImage(this.weaponImg, 0, -5, 32, 10);
                 ctx.restore();
             }
@@ -2771,7 +2951,8 @@ class BattlefieldRenderer {
     }
 
     drawWeather(ctx, deltaTime) {
-        if (this.isGuestLite()) return; // fog clouds are a lite-mode killer
+        if (this.isGuestLite() || this.weather.type === 'clear') return;
+
         if (this.weather.type === 'fog') {
             this.weather.fogParticles.forEach(f => {
                 f.x += f.vx;
@@ -2782,6 +2963,31 @@ class BattlefieldRenderer {
                 ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
                 ctx.fill();
             });
+        } else if (this.weather.type === 'smog') {
+            this.weather.fogParticles.forEach(f => {
+                f.x += f.vx;
+                if (f.x > this.worldWidth + f.radius) f.x = -f.radius;
+
+                ctx.fillStyle = `rgba(130, 140, 100, ${f.opacity})`;
+                ctx.beginPath();
+                ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        } else if (this.weather.type === 'rain') {
+            ctx.strokeStyle = 'rgba(180, 210, 240, 0.45)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            this.weather.rainParticles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                if (p.y > this.worldHeight) {
+                    p.y = -20;
+                    p.x = Math.random() * this.worldWidth;
+                }
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p.x + p.vx, p.y + p.length);
+            });
+            ctx.stroke();
         }
     }
 

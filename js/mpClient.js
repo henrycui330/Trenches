@@ -189,8 +189,8 @@ class MpClient {
         }
 
         const now = performance.now();
-        // When P2P is up, slow the WS backbone — dual full-rate snaps melt guest devices
-        const wsInterval = viaP2p ? 220 : 80;
+        // High-speed snapshot backbone: 45ms over WS (~22 Hz), 200ms when P2P channel is active
+        const wsInterval = viaP2p ? 200 : 45;
         if (!viaP2p || !this._lastWsSnapAt || now - this._lastWsSnapAt > wsInterval) {
             this._lastWsSnapAt = now;
             this.send({ type: 'snapshot', snap: lightSnap });

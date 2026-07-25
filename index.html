@@ -31,37 +31,37 @@
             </header>
 
             <nav class="menu-navigation">
-                <button id="btn-start-battle" class="menu-btn primary-btn">
+                <button type="button" id="btn-start-battle" class="menu-btn primary-btn">
                     <span class="btn-icon">⚔️</span>
                     <span class="btn-text">ASSUME COMMAND</span>
                     <span class="btn-subtext">Solo — Choose Alliance & Country to Deploy</span>
                 </button>
 
-                <button id="btn-multiplayer" class="menu-btn">
+                <button type="button" id="btn-multiplayer" class="menu-btn">
                     <span class="btn-icon">📡</span>
                     <span class="btn-text">MULTIPLAYER</span>
                     <span class="btn-subtext">Create or join a room with a 5-digit code</span>
                 </button>
 
-                <button id="btn-war-cabinet" class="menu-btn">
+                <button type="button" id="btn-war-cabinet" class="menu-btn">
                     <span class="btn-icon">📜</span>
                     <span class="btn-text">WAR CABINET & DOSSIER</span>
                     <span class="btn-subtext">Inspect Factions & Army Doctrines</span>
                 </button>
 
-                <button id="btn-countryball-viewer" class="menu-btn">
+                <button type="button" id="btn-countryball-viewer" class="menu-btn">
                     <span class="btn-icon">👁️</span>
                     <span class="btn-text">COUNTRYBALL VIEWER</span>
                     <span class="btn-subtext">Preview nation sprites &amp; kit loadouts</span>
                 </button>
 
-                <button id="btn-settings" class="menu-btn">
+                <button type="button" id="btn-settings" class="menu-btn">
                     <span class="btn-icon">⚙️</span>
                     <span class="btn-text">HQ SETTINGS</span>
                     <span class="btn-subtext">Audio, Graphics &amp; Atmospheric FX</span>
                 </button>
 
-                <button id="btn-credits" class="menu-btn">
+                <button type="button" id="btn-credits" class="menu-btn">
                     <span class="btn-icon">🎖️</span>
                     <span class="btn-text">COMMENDATIONS & DISPATCHES</span>
                     <span class="btn-subtext">Historical Intel & Credits</span>
@@ -84,7 +84,7 @@
         <!-- TOP HUD BAR -->
         <header id="battle-hud-top" class="hud-bar top-hud">
             <div class="hud-group left">
-                <button id="btn-return-menu" class="hud-icon-btn" title="Return to War Room">
+                <button type="button" id="btn-return-menu" class="hud-icon-btn" title="Return to War Room">
                     <span>🔙 MENU</span>
                 </button>
                 <div class="faction-badge">
@@ -156,6 +156,15 @@
                         <span class="stat-value" id="hud-morale">85%</span>
                     </div>
                     <div class="stat-bar-container"><div id="hud-morale-bar" class="stat-bar-fill morale-fill" style="width: 85%;"></div></div>
+                </div>
+
+                <!-- DISASTER BADGE -->
+                <div class="stat-box disaster-box hidden" id="hud-disaster-box" title="Active Disaster Event">
+                    <span class="stat-icon" id="hud-disaster-icon">☣️</span>
+                    <div class="stat-info">
+                        <span class="stat-label" id="hud-disaster-label">ACTIVE DISASTER</span>
+                        <span class="stat-value disaster-value" id="hud-disaster-timer">FLOOD (120s)</span>
+                    </div>
                 </div>
             </div>
 
@@ -402,6 +411,105 @@
                             </button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRE-BATTLE MATCH SETTINGS MODAL -->
+    <div id="modal-match-settings" class="modal hidden">
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2>⚙️ HIGH COMMAND BATTLE DISPATCH & SETTINGS</h2>
+                <button class="close-modal-btn">&times;</button>
+            </header>
+            <div class="modal-body match-settings-body">
+                <div class="match-settings-header">
+                    <span id="match-settings-country-badge" class="badge-pill">🇬🇧 UNITED KINGDOM</span>
+                    <p class="settings-prompt">Configure your battle directive before deploying to the front line:</p>
+                </div>
+
+                <div class="match-settings-grid">
+                    <!-- GAME MODE SELECTION -->
+                    <div class="setting-card">
+                        <div class="setting-card-title">🎯 GAME MODE</div>
+                        <div class="setting-options-row" id="setting-gamemode-options">
+                            <button type="button" class="setting-option-btn active" data-mode="checkpoints">
+                                <span class="option-icon">🚩</span>
+                                <span class="option-title">CHECKPOINTS</span>
+                                <span class="option-desc">Advance across 3 sequential capture points (C-1, C-2, C-3)</span>
+                            </button>
+                            <button type="button" class="setting-option-btn" data-mode="koth">
+                                <span class="option-icon">⛰️</span>
+                                <span class="option-title">KING OF THE HILL</span>
+                                <span class="option-desc">Control single central hill (HILL-100) to drain enemy morale</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- WEATHER SELECTION -->
+                    <div class="setting-card">
+                        <div class="setting-card-title">🌦️ BATTLEFIELD ATMOSPHERE / WEATHER</div>
+                        <div class="setting-options-grid" id="setting-weather-options">
+                            <button type="button" class="setting-option-btn active" data-weather="fog">
+                                <span class="option-icon">🌫️</span>
+                                <span class="option-title">HEAVY FOG</span>
+                            </button>
+                            <button type="button" class="setting-option-btn" data-weather="rain">
+                                <span class="option-icon">🌧️</span>
+                                <span class="option-title">RAINSTORM</span>
+                            </button>
+                            <button type="button" class="setting-option-btn" data-weather="clear">
+                                <span class="option-icon">☀️</span>
+                                <span class="option-title">CLEAR SKIES</span>
+                            </button>
+                            <button type="button" class="setting-option-btn" data-weather="smog">
+                                <span class="option-icon">☣️</span>
+                                <span class="option-title">MUD & SMOG</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- STARTING FORCES -->
+                    <div class="setting-card">
+                        <div class="setting-card-title">🪖 INITIAL GARRISON FORCES (PER SIDE)</div>
+                        <div class="setting-options-row" id="setting-garrison-options">
+                            <button type="button" class="setting-option-btn" data-garrison="10">
+                                <span class="option-icon">🗡️</span>
+                                <span class="option-title">SKIRMISH (10 MEN)</span>
+                            </button>
+                            <button type="button" class="setting-option-btn active" data-garrison="25">
+                                <span class="option-icon">🪖</span>
+                                <span class="option-title">STANDARD (25 MEN)</span>
+                            </button>
+                            <button type="button" class="setting-option-btn" data-garrison="40">
+                                <span class="option-icon">💥</span>
+                                <span class="option-title">MASSIVE ASSAULT (40 MEN)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- DISASTER FREQUENCY SLIDER -->
+                    <div class="setting-card">
+                        <div class="setting-card-title-row">
+                            <span class="setting-card-title">☣️ HISTORICAL DISASTERS & RANDOM EVENTS</span>
+                            <span id="setting-disaster-label" class="setting-value-badge">MODERATE (50%)</span>
+                        </div>
+                        <p class="setting-card-desc">Random occurrences: Trench Floods (cholera), Rat Infestations (-50% morale), and Supply Blackouts (no healing).</p>
+                        <div class="slider-row">
+                            <span class="slider-legend">OFF (0%)</span>
+                            <input type="range" id="setting-disaster-slider" min="0" max="100" step="10" value="50" class="setting-slider">
+                            <span class="slider-legend">CONSTANT (100%)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="match-settings-actions">
+                    <button id="btn-commence-battle" class="menu-btn primary-btn commence-btn">
+                        <span class="btn-icon">⚔️</span>
+                        <span class="btn-text">COMMENCE OPERATIONS</span>
+                        <span class="btn-subtext">Deploy to No Man's Land with selected settings</span>
+                    </button>
                 </div>
             </div>
         </div>
