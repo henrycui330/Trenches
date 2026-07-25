@@ -2802,7 +2802,7 @@ class BattlefieldRenderer {
                 const activeRifleImg = (this.bayonetWeaponImgLoaded && (unit.type === 'rifleman' || unit.bayonetThrustTimer > 0))
                     ? this.bayonetWeaponImg
                     : this.weaponImg;
-                ctx.drawImage(activeRifleImg, 0, -5, 34, 10);
+                ctx.drawImage(activeRifleImg, 0, -9, 34, 18);
                 ctx.restore();
             }
 
