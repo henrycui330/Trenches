@@ -393,10 +393,7 @@ class BattlefieldRenderer {
             if (seat && seat.country) return seat.country;
         }
         if (ownerId === 'ai') {
-            if (this.playerFaction === 'central' && this.playerCountry === 'soviet') {
-                return 'germany'; // German Armed Forces facing Soviet Union on the Eastern Front
-            }
-            return faction === 'entente' ? 'uk' : 'germany';
+            return faction === 'central' ? 'germany' : 'uk';
         }
         if (ownerId === this._getLocalPlayerId()) return this.playerCountry;
         return faction === this.playerFaction ? this.playerCountry : this._getEnemyCountry();
@@ -2045,10 +2042,10 @@ class BattlefieldRenderer {
     }
 
     _getTeamTitle(faction) {
-        if (this.playerCountry === 'soviet') {
-            return faction === 'central' ? 'RED ARMY' : 'GERMAN ARMED FORCES';
+        if (faction === 'entente') {
+            return this.playerCountry === 'soviet' ? 'RED ARMY' : 'ALLIED FORCES';
         }
-        return faction === 'entente' ? 'ALLIED FORCES' : 'GERMAN ARMED FORCES';
+        return 'GERMAN ARMED FORCES';
     }
 
     orderCharge(faction) {
@@ -2648,7 +2645,7 @@ class BattlefieldRenderer {
             germany: { img: this.germanyImg,  loaded: this.germanyImgLoaded,  w: 84, h: 52, ox: -42, oy: -26, flip: true,  weaponFlip: true  },
             austria: { img: this.austriaImg,  loaded: this.austriaImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: false, weaponFlip: true  },
             ottoman: { img: this.ottomanImg,  loaded: this.ottomanImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: true,  weaponFlip: true  },
-            soviet:  { img: this.sovietImg,   loaded: this.sovietImgLoaded,   w: 34, h: 30, ox: -17, oy: -15, flip: true,  weaponFlip: true  }
+            soviet:  { img: this.sovietImg,   loaded: this.sovietImgLoaded,   w: 34, h: 30, ox: -17, oy: -15, flip: false, weaponFlip: false }
         };
         return map[country] || map['uk'];
     }
