@@ -55,6 +55,11 @@ class BattlefieldRenderer {
         this.weaponImgLoaded = false;
         this.weaponImg.onload = () => { this.weaponImgLoaded = true; };
 
+        this.bayonetWeaponImg = new Image();
+        this.bayonetWeaponImg.src = 'KAR98k BAYONET.png';
+        this.bayonetWeaponImgLoaded = false;
+        this.bayonetWeaponImg.onload = () => { this.bayonetWeaponImgLoaded = true; };
+
         this.pistolImg = new Image();
         this.pistolImg.src = 'm1911-removebg-preview.png';
         this.pistolImgLoaded = false;
@@ -2785,7 +2790,7 @@ class BattlefieldRenderer {
                         }
                     }
                 }
-            } else if ((unit.type === 'rifleman' || unit.type === 'medic') && this.weaponImgLoaded) {
+            } else if ((unit.type === 'rifleman' || unit.type === 'medic') && (this.bayonetWeaponImgLoaded || this.weaponImgLoaded)) {
                 ctx.save();
                 if (isFlipped) ctx.scale(-1, 1);
                 ctx.translate(6, 10);
@@ -2794,7 +2799,10 @@ class BattlefieldRenderer {
                 } else {
                     ctx.rotate(unit.isAiming ? -0.1 : 0.08); // Level ready stance!
                 }
-                ctx.drawImage(this.weaponImg, 0, -5, 32, 10);
+                const activeRifleImg = (this.bayonetWeaponImgLoaded && (unit.type === 'rifleman' || unit.bayonetThrustTimer > 0))
+                    ? this.bayonetWeaponImg
+                    : this.weaponImg;
+                ctx.drawImage(activeRifleImg, 0, -5, 34, 10);
                 ctx.restore();
             }
 
