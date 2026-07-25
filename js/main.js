@@ -108,7 +108,7 @@ window.AudioEngine = new AudioSynthesizer();
 
 // Application Bootstrap
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("Initializing Trenches 1917: High Command System...");
+    console.log("Initializing Trenches: World War Commander System...");
 
     // 1. Initialize Canvas Renderer
     const renderer = new BattlefieldRenderer('battlefield-canvas', 'minimap-canvas');
