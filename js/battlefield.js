@@ -65,10 +65,15 @@ class BattlefieldRenderer {
         this.pistolImgLoaded = false;
         this.pistolImg.onload = () => { this.pistolImgLoaded = true; };
 
-        this.mg08Img = new Image();
-        this.mg08Img.src = 'mg-08-machine-gun-weapon-weaponry-cannon-transparent-png-2101779-removebg-preview.png';
-        this.mg08ImgLoaded = false;
-        this.mg08Img.onload = () => { this.mg08ImgLoaded = true; };
+        this.alliedMgImg = new Image();
+        this.alliedMgImg.src = 'm2-removebg-preview.png';
+        this.alliedMgImgLoaded = false;
+        this.alliedMgImg.onload = () => { this.alliedMgImgLoaded = true; };
+
+        this.axisMgImg = new Image();
+        this.axisMgImg.src = 'mg42-removebg-preview.png';
+        this.axisMgImgLoaded = false;
+        this.axisMgImg.onload = () => { this.axisMgImgLoaded = true; };
 
         this.artilleryImg = new Image();
         this.artilleryImg.src = 'artillery!!!!.png';
@@ -2532,8 +2537,12 @@ class BattlefieldRenderer {
                 ctx.arc(0, 0, 18, 0, Math.PI * 2);
                 ctx.fill();
 
-                if (this.mg08ImgLoaded) {
-                    ctx.drawImage(this.mg08Img, -2, -14, 38, 28);
+                const isAllied = s.faction === 'entente';
+                const mgImg = isAllied ? this.alliedMgImg : this.axisMgImg;
+                const mgLoaded = isAllied ? this.alliedMgImgLoaded : this.axisMgImgLoaded;
+
+                if (mgLoaded) {
+                    ctx.drawImage(mgImg, -2, -14, 40, 28);
                 } else {
                     ctx.fillStyle = '#111';
                     ctx.fillRect(0, -4, 28, 8);
