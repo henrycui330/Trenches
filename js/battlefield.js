@@ -2666,16 +2666,16 @@ class BattlefieldRenderer {
             // Sprinting Detection & Smooth Stride Cadence
             const isSprinting = unit.state === 'charging' || unit.state === 'retreating' || unit.isSprinting;
             if (isSprinting) {
-                unit.sprintPhase = (unit.sprintPhase || 0) + (deltaTime || 0.016) * 7.5;
+                unit.sprintPhase = (unit.sprintPhase || 0) + (deltaTime || 0.016) * 3.5;
             } else {
                 unit.sprintPhase = 0;
             }
 
-            // Smooth athletic sprint: forward torso lean, weight sway, and vertical footstep bob
-            const forwardLean = unit.faction === 'entente' ? 0.12 : -0.12;
-            const bodySway = isSprinting ? (forwardLean + Math.sin(unit.sprintPhase) * 0.10) : 0;
-            const verticalBob = isSprinting ? Math.abs(Math.sin(unit.sprintPhase)) * -3.5 : 0;
-            const rifleSprintDip = isSprinting ? (0.32 + Math.sin(unit.sprintPhase) * 0.05) : 0;
+            // Slower, smooth stride sway
+            const forwardLean = unit.faction === 'entente' ? 0.10 : -0.10;
+            const bodySway = isSprinting ? (forwardLean + Math.sin(unit.sprintPhase) * 0.06) : 0;
+            const verticalBob = isSprinting ? Math.abs(Math.sin(unit.sprintPhase)) * -2.5 : 0;
+            const rifleSprintDip = isSprinting ? (0.28 + Math.sin(unit.sprintPhase) * 0.04) : 0;
 
             ctx.save();
             ctx.translate(unit.x, unit.y + verticalBob);
