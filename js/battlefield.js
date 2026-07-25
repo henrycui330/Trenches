@@ -2542,7 +2542,14 @@ class BattlefieldRenderer {
                 const mgLoaded = isAllied ? this.alliedMgImgLoaded : this.axisMgImgLoaded;
 
                 if (mgLoaded) {
-                    ctx.drawImage(mgImg, -2, -14, 40, 28);
+                    ctx.save();
+                    if (!isAllied) {
+                        ctx.scale(-1, 1); // Flip Axis MG42 to point left toward No Man's Land
+                    }
+                    const renderW = isAllied ? 46 : 38;
+                    const renderH = isAllied ? 20 : 26;
+                    ctx.drawImage(mgImg, -6, -renderH / 2, renderW, renderH);
+                    ctx.restore();
                 } else {
                     ctx.fillStyle = '#111';
                     ctx.fillRect(0, -4, 28, 8);
