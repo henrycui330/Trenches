@@ -75,6 +75,16 @@ class BattlefieldRenderer {
         this.axisMgImgLoaded = false;
         this.axisMgImg.onload = () => { this.axisMgImgLoaded = true; };
 
+        this.sovietImg = new Image();
+        this.sovietImg.src = 'soviet-removebg-preview.png';
+        this.sovietImgLoaded = false;
+        this.sovietImg.onload = () => { this.sovietImgLoaded = true; };
+
+        this.sovietMgImg = new Image();
+        this.sovietMgImg.src = 'PKMMMMM-removebg-preview.png';
+        this.sovietMgImgLoaded = false;
+        this.sovietMgImg.onload = () => { this.sovietMgImgLoaded = true; };
+
         this.artilleryImg = new Image();
         this.artilleryImg.src = 'artillery!!!!.png';
         this.artilleryImgLoaded = false;
@@ -2625,7 +2635,8 @@ class BattlefieldRenderer {
             usa:     { img: this.usaImg,      loaded: this.usaImgLoaded,      w: 34, h: 34, ox: -17, oy: -17, flip: false, weaponFlip: false },
             germany: { img: this.germanyImg,  loaded: this.germanyImgLoaded,  w: 84, h: 52, ox: -42, oy: -26, flip: true,  weaponFlip: true  },
             austria: { img: this.austriaImg,  loaded: this.austriaImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: false, weaponFlip: true  },
-            ottoman: { img: this.ottomanImg,  loaded: this.ottomanImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: true,  weaponFlip: true  }
+            ottoman: { img: this.ottomanImg,  loaded: this.ottomanImgLoaded,  w: 50, h: 50, ox: -25, oy: -25, flip: true,  weaponFlip: true  },
+            soviet:  { img: this.sovietImg,   loaded: this.sovietImgLoaded,   w: 38, h: 38, ox: -19, oy: -19, flip: false, weaponFlip: false }
         };
         return map[country] || map['uk'];
     }
@@ -2777,16 +2788,20 @@ class BattlefieldRenderer {
                     ctx.restore();
                 }
             } else if (unit.type === 'machinegunner') {
+                const isSoviet = unit.country === 'soviet';
                 const isAllied = unit.faction === 'entente';
-                const mgImg = isAllied ? this.alliedMgImg : this.axisMgImg;
-                const mgLoaded = isAllied ? this.alliedMgImgLoaded : this.axisMgImgLoaded;
+                const mgImg = isSoviet ? (this.sovietMgImgLoaded ? this.sovietMgImg : this.alliedMgImg) : (isAllied ? this.alliedMgImg : this.axisMgImg);
+                const mgLoaded = isSoviet ? (this.sovietMgImgLoaded || this.alliedMgImgLoaded) : (isAllied ? this.alliedMgImgLoaded : this.axisMgImgLoaded);
                 if (mgLoaded) {
                     ctx.save();
                     if (isFlipped) ctx.scale(-1, 1);
                     ctx.translate(5, 8);
                     ctx.rotate(isSprinting ? rifleSprintDip : (unit.isAiming ? -0.05 : 0.08));
-                    const mgW = isAllied ? 36 : 32;
-                    const mgH = isAllied ? 16 : 22;
+                    if (isSoviet) {
+                        ctx.scale(-1, 1); // Flip PKM horizontally as requested!
+                    }
+                    const mgW = isSoviet ? 38 : (isAllied ? 36 : 32);
+                    const mgH = isSoviet ? 18 : (isAllied ? 16 : 22);
                     ctx.drawImage(mgImg, 0, -mgH / 2, mgW, mgH);
                     ctx.restore();
                 }

@@ -21,6 +21,7 @@ class CountryballViewer {
             canada: 'canada_countryball_by_bosphore9_by_bosphore9_dfyszme-fullview.png',
             france: 'a-french-countryball-i-drew-some-time-ago-v0-sq9mv8o9c21b1-removebg-preview.png',
             usa: 'OIP__3_-removebg-preview.png',
+            soviet: 'soviet-removebg-preview.png',
             germany: '560-5607261_germany-countryballs-ww1-freetoedit-eye-liner-hd-png-removebg-preview.png',
             austria: 'channels4_profile-removebg-preview.png',
             ottoman: 'ottomans-removebg-preview.png',

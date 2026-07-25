@@ -119,15 +119,16 @@ class UIController {
                 this.pendingFaction = card.getAttribute('data-faction');
                 this.pendingCountry = card.getAttribute('data-country') || 'uk';
 
-                const flags = { uk: '🇬🇧', canada: '🇨🇦', france: '🇫🇷', usa: '🇺🇸', germany: '🇩🇪', austria: '🇦🇹', ottoman: '🇹🇷' };
+                const flags = { uk: '🇬🇧', canada: '🇨🇦', france: '🇫🇷', usa: '🇺🇸', soviet: '🛠️', germany: '🇩🇪', austria: '🇦🇹', ottoman: '🇹🇷' };
                 const titles = {
-                    uk: 'UNITED KINGDOM (BEF)',
-                    canada: 'CANADIAN EXPEDITIONARY FORCE (CEF)',
-                    france: 'FRENCH ARMY (POILUS)',
-                    usa: 'UNITED STATES EXPEDITIONARY FORCE (AEF)',
-                    germany: 'GERMAN IMPERIAL ARMY',
-                    austria: 'AUSTRO-HUNGARIAN IMPERIAL ARMY',
-                    ottoman: 'OTTOMAN IMPERIAL ARMY'
+                    uk: 'UNITED KINGDOM (BRITISH ARMED FORCES)',
+                    canada: 'CANADA (CANADIAN ARMED FORCES)',
+                    france: 'FRANCE (FRENCH ARMED FORCES)',
+                    usa: 'UNITED STATES (US ARMY / AMERICAN FORCES)',
+                    soviet: 'SOVIET UNION (RED ARMY)',
+                    germany: 'GERMAN ARMED FORCES',
+                    austria: 'AUSTRO-HUNGARIAN FORCES',
+                    ottoman: 'OTTOMAN ARMED FORCES'
                 };
                 const badgeEl = document.getElementById('match-settings-country-badge');
                 if (badgeEl) {
@@ -598,15 +599,16 @@ class UIController {
         const lightHud = !!this.uiBusy;
 
         // Player Country Flag & Badge Title
-        const flags = { uk: '🇬🇧', canada: '🇨🇦', france: '🇫🇷', usa: '🇺🇸', germany: '🇩🇪', austria: '🇦🇹', ottoman: '🇹🇷' };
+        const flags = { uk: '🇬🇧', canada: '🇨🇦', france: '🇫🇷', usa: '🇺🇸', soviet: '🛠️', germany: '🇩🇪', austria: '🇦🇹', ottoman: '🇹🇷' };
         const titles = {
-            uk: 'UNITED KINGDOM (BEF)',
-            canada: 'CANADIAN EXPEDITIONARY FORCE (CEF)',
-            france: 'FRENCH ARMY (POILUS)',
-            usa: 'UNITED STATES EXPEDITIONARY FORCE (AEF)',
-            germany: 'GERMAN IMPERIAL ARMY',
-            austria: 'AUSTRO-HUNGARIAN IMPERIAL ARMY',
-            ottoman: 'OTTOMAN IMPERIAL ARMY'
+            uk: 'UNITED KINGDOM (BRITISH ARMED FORCES)',
+            canada: 'CANADA (CANADIAN ARMED FORCES)',
+            france: 'FRANCE (FRENCH ARMED FORCES)',
+            usa: 'UNITED STATES (US ARMY / AMERICAN FORCES)',
+            soviet: 'SOVIET UNION (RED ARMY)',
+            germany: 'GERMAN ARMED FORCES',
+            austria: 'AUSTRO-HUNGARIAN FORCES',
+            ottoman: 'OTTOMAN ARMED FORCES'
         };
 
         if (this.playerFlagIcon) this.playerFlagIcon.innerText = flags[state.playerCountry] || (state.playerFaction === 'entente' ? '🇬🇧' : '🇩🇪');
@@ -789,13 +791,14 @@ class UIController {
         this.initElements();
         const pCountry = this.engine ? this.engine.state.playerCountry : 'uk';
         const teamTitles = {
-            uk: "UNITED KINGDOM (BEF)",
-            canada: "CANADIAN EXPEDITIONARY FORCE (CEF)",
-            france: "FRENCH ARMY (POILUS)",
-            usa: "UNITED STATES EXPEDITIONARY FORCE (AEF)",
-            germany: "GERMAN IMPERIAL ARMY",
-            austria: "AUSTRO-HUNGARIAN IMPERIAL ARMY",
-            ottoman: "OTTOMAN IMPERIAL ARMY"
+            uk: "BRITISH ARMED FORCES",
+            canada: "CANADIAN ARMED FORCES",
+            france: "FRENCH ARMED FORCES",
+            usa: "US ARMY",
+            soviet: "RED ARMY",
+            germany: "GERMAN ARMED FORCES",
+            austria: "AUSTRO-HUNGARIAN FORCES",
+            ottoman: "OTTOMAN ARMED FORCES"
         };
         const teamName = teamTitles[pCountry] || 'HIGH COMMAND';
 
