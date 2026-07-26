@@ -100,6 +100,23 @@ class BattlefieldRenderer {
         this.grenadeImgLoaded = false;
         this.grenadeImg.onload = () => { this.grenadeImgLoaded = true; };
 
+        this.sovietTankImg = new Image();
+        this.sovietTankImg.src = 'Untitled_design__5_-removebg-preview.png';
+        this.sovietTankImgLoaded = false;
+        this.sovietTankImg.onload = () => { this.sovietTankImgLoaded = true; };
+
+        this.axisTankImg = new Image();
+        this.axisTankImg.src = 'Untitled_design__6_-removebg-preview.png';
+        this.axisTankImgLoaded = false;
+        this.axisTankImg.onload = () => { this.axisTankImgLoaded = true; };
+
+        this.alliedTankImg = new Image();
+        this.alliedTankImg.src = 'Untitled_design__5_-removebg-preview (1).png';
+        this.alliedTankImgLoaded = false;
+        this.alliedTankImg.onload = () => { this.alliedTankImgLoaded = true; };
+
+        this.tanks = [];
+
         // World Coordinates (Horizontal battlefield: Left = Allied, Right = Central Powers)
         this.worldWidth = 4800;
         this.worldHeight = 1600;
@@ -250,6 +267,7 @@ class BattlefieldRenderer {
         this.particles = [];
         this.tracers = [];
         this.planes = [];
+        this.tanks = [];
         this.generateTerrainFeatures();
         this.initWeather(this.weatherType);
         this.spawnInitialGarrisons();
@@ -1314,6 +1332,7 @@ class BattlefieldRenderer {
             this.updateSoldierMovement(dtSec);
             this.updateStructures(dtSec);
             this.updateCapturePoints(dtSec);
+            this.updateTanks(dtSec);
         }
 
         const ctx = this.ctx;
@@ -1330,6 +1349,7 @@ class BattlefieldRenderer {
         this.drawTerrainObstacles(ctx);
         this.drawDeadBodies(ctx);
         this.drawUnits(ctx, deltaTime);
+        this.drawTanks(ctx);
         this.drawStructures(ctx);
         this.updateAndDrawTracers(ctx, dtSec);
         this.updateAndDrawOrdnance(ctx, deltaTime);
@@ -2536,6 +2556,204 @@ class BattlefieldRenderer {
             ctx.moveTo(w.x + 8, w.y - 10); ctx.lineTo(w.x - 8, w.y + 10);
             ctx.stroke();
             ctx.strokeStyle = '#8c8275';
+        });
+    }
+
+    spawnTankSupport(faction, ownerId = null) {
+        const resolvedOwnerId = this._resolveOwnerId(faction, ownerId);
+        const isLeft = faction === 'entente';
+        const startX = isLeft ? -150 : this.worldWidth + 150;
+        const dropX = isLeft ? this.ententeTrenchX : this.centralTrenchX;
+        const targetFrontX = isLeft ? (this.worldWidth - 600) : 600;
+        const country = this._countryForOwner(resolvedOwnerId, faction);
+
+        for (let i = 0; i < 3; i++) {
+            const spawnY = 280 + i * 280 + (Math.random() * 80 - 40);
+            this.tanks.push({
+                id: Math.random().toString(36).substr(2, 9),
+                faction: faction,
+                ownerId: resolvedOwnerId,
+                country: country,
+                x: startX + (isLeft ? -i * 140 : i * 140),
+                y: spawnY,
+                targetX: dropX,
+                targetY: spawnY,
+                targetFrontX: targetFrontX,
+                hp: 550,
+                maxHp: 550,
+                speed: 2.4,
+                state: 'moving_to_drop', // 'moving_to_drop' | 'dropping_off' | 'advancing'
+                dropTimer: 0,
+                droppedOff: false,
+                cannonCooldown: Math.random() * 2,
+                recoil: 0
+            });
+        }
+        if (window.AudioEngine && typeof window.AudioEngine.playArtilleryBoom === 'function') {
+            window.AudioEngine.playArtilleryBoom();
+        }
+    }
+
+    updateTanks(deltaTime = 0.016) {
+        for (let i = this.tanks.length - 1; i >= 0; i--) {
+            const t = this.tanks[i];
+            if (t.hp <= 0) {
+                this.createCrater(t.x, t.y, 24);
+                for (let p = 0; p < 18; p++) {
+                    this.particles.push({
+                        x: t.x + (Math.random() * 40 - 20),
+                        y: t.y + (Math.random() * 20 - 10),
+                        vx: (Math.random() - 0.5) * 6,
+                        vy: (Math.random() - 0.5) * 6,
+                        life: 1.2,
+                        maxLife: 1.2,
+                        size: 6 + Math.random() * 8,
+                        color: Math.random() < 0.6 ? '#f97316' : '#4b5563'
+                    });
+                }
+                this.tanks.splice(i, 1);
+                continue;
+            }
+
+            t.recoil = Math.max(0, t.recoil - deltaTime * 5);
+            t.cannonCooldown = Math.max(0, t.cannonCooldown - deltaTime);
+
+            const isLeft = t.faction === 'entente';
+
+            if (t.state === 'moving_to_drop') {
+                const dist = Math.abs(t.x - t.targetX);
+                if (dist > 15) {
+                    t.x += (isLeft ? 1 : -1) * t.speed * 60 * deltaTime;
+                } else {
+                    t.state = 'dropping_off';
+                    t.dropTimer = 2.0;
+                }
+            } else if (t.state === 'dropping_off') {
+                t.dropTimer -= deltaTime;
+                if (t.dropTimer <= 0 && !t.droppedOff) {
+                    t.droppedOff = true;
+                    // Drop off 3 men (Roulette: rifleman, skirmisher, machinegunner, medic, engineer)
+                    const types = ['rifleman', 'skirmisher', 'machinegunner', 'medic', 'engineer'];
+                    for (let m = 0; m < 3; m++) {
+                        const rType = types[Math.floor(Math.random() * types.length)];
+                        const dropY = Math.max(100, Math.min(this.worldHeight - 100, t.y + (m - 1) * 22));
+                        const soldier = this.createSoldier(t.faction, t.x, dropY, rType, 'garrison', t.ownerId, t.country);
+                        this.units.push(soldier);
+                    }
+                    t.state = 'advancing';
+                    t.targetX = t.targetFrontX;
+                }
+            } else if (t.state === 'advancing') {
+                const dist = Math.abs(t.x - t.targetX);
+                if (dist > 15) {
+                    t.x += (isLeft ? 1 : -1) * (t.speed * 0.75) * 60 * deltaTime;
+                }
+            }
+
+            // Tank Main Cannon Combat (Fires every 3.5s at enemy targets within 750px)
+            if (t.cannonCooldown <= 0) {
+                const targets = this.units.filter(u => u.hp > 0 && u.faction !== t.faction && Math.abs(u.x - t.x) < 750);
+                if (targets.length > 0) {
+                    targets.sort((a, b) => Math.abs(a.x - t.x) - Math.abs(b.x - t.x));
+                    const target = targets[0];
+
+                    t.cannonCooldown = 3.5;
+                    t.recoil = 1.0;
+
+                    if (window.AudioEngine && typeof window.AudioEngine.playShot === 'function') {
+                        window.AudioEngine.playShot('artillery');
+                    }
+
+                    const cannonAngle = Math.atan2(target.y - t.y, target.x - t.x);
+                    this.ordnance.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        x: t.x + (isLeft ? 40 : -40),
+                        y: t.y - 10,
+                        vx: Math.cos(cannonAngle) * 14,
+                        vy: Math.sin(cannonAngle) * 14,
+                        targetX: target.x,
+                        targetY: target.y,
+                        type: 'tank_shell',
+                        damage: 90,
+                        splashRadius: 55,
+                        faction: t.faction,
+                        ownerId: t.ownerId
+                    });
+                }
+            }
+        }
+    }
+
+    drawTanks(ctx) {
+        this.tanks.forEach(t => {
+            ctx.save();
+            ctx.translate(t.x, t.y);
+
+            const isLeft = t.faction === 'entente';
+            const isSoviet = t.country === 'soviet';
+
+            let img = this.alliedTankImg;
+            let loaded = this.alliedTankImgLoaded;
+
+            if (isSoviet && this.sovietTankImgLoaded) {
+                img = this.sovietTankImg;
+                loaded = this.sovietTankImgLoaded;
+            } else if (t.faction === 'central' && this.axisTankImgLoaded) {
+                img = this.axisTankImg;
+                loaded = this.axisTankImgLoaded;
+            }
+
+            // Tank Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.beginPath();
+            ctx.ellipse(0, 22, 48, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Flip facing based on faction
+            if (!isLeft) {
+                ctx.scale(-1, 1);
+            }
+
+            // Cannon Recoil Kick
+            const recoilX = -t.recoil * 6;
+            ctx.translate(recoilX, 0);
+
+            const tankW = 96;
+            const tankH = 54;
+
+            if (loaded) {
+                ctx.drawImage(img, -tankW / 2, -tankH / 2, tankW, tankH);
+            } else {
+                ctx.fillStyle = t.faction === 'entente' ? '#2563eb' : '#dc2626';
+                ctx.fillRect(-40, -20, 80, 40);
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(0, -8, 35, 10);
+            }
+
+            ctx.restore();
+
+            // Tank Health Bar overhead
+            if (t.hp < t.maxHp) {
+                ctx.save();
+                ctx.translate(t.x, t.y - 36);
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(-24, 0, 48, 6);
+                const hpPct = Math.max(0, t.hp / t.maxHp);
+                ctx.fillStyle = hpPct > 0.5 ? '#10b981' : (hpPct > 0.2 ? '#f59e0b' : '#ef4444');
+                ctx.fillRect(-24, 0, 48 * hpPct, 6);
+                ctx.restore();
+            }
+
+            // Dropping Off Indicator Text
+            if (t.state === 'dropping_off') {
+                ctx.save();
+                ctx.translate(t.x, t.y - 48);
+                ctx.font = 'bold 11px "Special Elite", monospace';
+                ctx.fillStyle = '#f59e0b';
+                ctx.textAlign = 'center';
+                ctx.fillText("🪖 UNLOADING 3 MEN...", 0, 0);
+                ctx.restore();
+            }
         });
     }
 

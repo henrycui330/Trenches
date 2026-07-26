@@ -23,8 +23,6 @@ class CountryballViewer {
             usa: 'OIP__3_-removebg-preview.png',
             soviet: 'soviet-removebg-preview.png',
             germany: '560-5607261_germany-countryballs-ww1-freetoedit-eye-liner-hd-png-removebg-preview.png',
-            austria: 'channels4_profile-removebg-preview.png',
-            ottoman: 'ottomans-removebg-preview.png',
             rifle: 'KAR98K-removebg-preview.png',
             pistol: 'm1911-removebg-preview.png',
             shotgun: 'remington-removebg-preview.png',

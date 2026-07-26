@@ -562,6 +562,15 @@ class GameEngine {
         this.state.commandPoints -= cost;
 
         switch (orderType) {
+            case 'tank_support':
+                this.renderer.spawnTankSupport(pFaction, oid);
+                this.notifyTelegraph(
+                    "ARMORED DIRECTIVE: Tank Support dispatched! 3 Heavy Tanks advancing to Main Trench to drop 9 troops before attacking frontlines!",
+                    true
+                );
+                this.awardXP(150);
+                break;
+
             case 'charge':
                 this.renderer.orderCharge(pFaction);
                 this.notifyTelegraph(

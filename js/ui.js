@@ -796,9 +796,7 @@ class UIController {
             france: "FRENCH ARMED FORCES",
             usa: "US ARMY",
             soviet: "RED ARMY",
-            germany: "GERMAN ARMED FORCES",
-            austria: "AUSTRO-HUNGARIAN FORCES",
-            ottoman: "OTTOMAN ARMED FORCES"
+            germany: "GERMAN ARMED FORCES"
         };
         const teamName = teamTitles[pCountry] || 'HIGH COMMAND';
 
@@ -812,6 +810,7 @@ class UIController {
             buy_officer_stream: { title: "FIELD OFFICER DISPATCHED", desc: "1 Field Officer dispatched from HQ! (10 ⭐, 60s limit)" },
             build_mg: { title: "ENGINEERING PLACEMENT", desc: "Click anywhere on the battlefield to construct a Machine Gun Nest (60s)!" },
             build_artillery: { title: "FIELD ARTILLERY PLACEMENT", desc: "Click anywhere on the battlefield to construct a Field Artillery Gun (90s)!" },
+            tank_support: { title: `${teamName} TANK SUPPORT DISPATCHED!`, desc: "3 Heavy Tanks deployed to drop 9 troops at Main Trench and attack frontlines! (100 CP)" },
             charge: { title: `${teamName} IS CHARGING!`, desc: "Cascade: 80% from each owned line advances one trench forward!" },
             reinforce: { title: `${teamName} REINFORCEMENTS`, desc: "20% hold main trench; 80% split evenly across owned Charlie lines (100%/50%/~33%)" },
             dig_in: { title: "FORTIFYING POSITIONS", desc: "Soldiers reinforcing sandbags and wire posts" },
