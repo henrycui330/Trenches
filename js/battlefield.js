@@ -2706,28 +2706,29 @@ class BattlefieldRenderer {
             // Tank Shadow
             ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
             ctx.beginPath();
-            ctx.ellipse(0, 22, 48, 14, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 32, 72, 18, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // Flip facing based on faction
-            if (!isLeft) {
+            // Flip facing based on faction (Left side tank barrel points RIGHT into combat)
+            if (isLeft) {
                 ctx.scale(-1, 1);
             }
 
             // Cannon Recoil Kick
-            const recoilX = -t.recoil * 6;
+            const recoilX = -t.recoil * 8;
             ctx.translate(recoilX, 0);
 
-            const tankW = 96;
-            const tankH = 54;
+            // 1.5x Bigger + Stretched Horizontally Left-Right
+            const tankW = 165;
+            const tankH = 81;
 
             if (loaded) {
                 ctx.drawImage(img, -tankW / 2, -tankH / 2, tankW, tankH);
             } else {
                 ctx.fillStyle = t.faction === 'entente' ? '#2563eb' : '#dc2626';
-                ctx.fillRect(-40, -20, 80, 40);
+                ctx.fillRect(-60, -30, 120, 60);
                 ctx.fillStyle = '#1e293b';
-                ctx.fillRect(0, -8, 35, 10);
+                ctx.fillRect(0, -12, 50, 14);
             }
 
             ctx.restore();
@@ -2735,20 +2736,20 @@ class BattlefieldRenderer {
             // Tank Health Bar overhead
             if (t.hp < t.maxHp) {
                 ctx.save();
-                ctx.translate(t.x, t.y - 36);
+                ctx.translate(t.x, t.y - 52);
                 ctx.fillStyle = 'rgba(0,0,0,0.7)';
-                ctx.fillRect(-24, 0, 48, 6);
+                ctx.fillRect(-32, 0, 64, 7);
                 const hpPct = Math.max(0, t.hp / t.maxHp);
                 ctx.fillStyle = hpPct > 0.5 ? '#10b981' : (hpPct > 0.2 ? '#f59e0b' : '#ef4444');
-                ctx.fillRect(-24, 0, 48 * hpPct, 6);
+                ctx.fillRect(-32, 0, 64 * hpPct, 7);
                 ctx.restore();
             }
 
             // Dropping Off Indicator Text
             if (t.state === 'dropping_off') {
                 ctx.save();
-                ctx.translate(t.x, t.y - 48);
-                ctx.font = 'bold 11px "Special Elite", monospace';
+                ctx.translate(t.x, t.y - 64);
+                ctx.font = 'bold 12px "Special Elite", monospace';
                 ctx.fillStyle = '#f59e0b';
                 ctx.textAlign = 'center';
                 ctx.fillText("🪖 UNLOADING 3 MEN...", 0, 0);
