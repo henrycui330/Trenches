@@ -717,7 +717,7 @@ class UIController {
         document.querySelectorAll('.order-btn[data-cost]').forEach(btn => {
             const order = btn.getAttribute('data-order');
             const cost = parseInt(btn.getAttribute('data-cost') || '0', 10);
-            if (order === 'charge' || order === 'reinforce' || order === 'dig_in' || order === 'fallback') {
+            if (order === 'charge' || order === 'reinforce' || order === 'dig_in' || order === 'fallback' || order === 'tank_support') {
                 btn.disabled = state.commandPoints < cost;
             }
         });
