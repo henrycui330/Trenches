@@ -106,12 +106,12 @@ class BattlefieldRenderer {
         this.sovietTankImg.onload = () => { this.sovietTankImgLoaded = true; };
 
         this.axisTankImg = new Image();
-        this.axisTankImg.src = 'Untitled_design__6_-removebg-preview.png';
+        this.axisTankImg.src = 'old_german_tank-removebg-preview.png';
         this.axisTankImgLoaded = false;
         this.axisTankImg.onload = () => { this.axisTankImgLoaded = true; };
 
         this.alliedTankImg = new Image();
-        this.alliedTankImg.src = 'Untitled_design__5_-removebg-preview (1).png';
+        this.alliedTankImg.src = 'old_ALLY_TANK-removebg-preview.png';
         this.alliedTankImgLoaded = false;
         this.alliedTankImg.onload = () => { this.alliedTankImgLoaded = true; };
 
